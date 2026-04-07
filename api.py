@@ -26,6 +26,15 @@ CACHE_IA = {
 }
 
 
+def safe_obtener_datos():
+    try:
+        data = obtener_datos()
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"⚠️ Error leyendo datos de collectors: {e}")
+        return []
+
+
 # =========================
 # APP
 # =========================
@@ -93,7 +102,7 @@ def loop_ia():
 
             CACHE_IA["status"] = "procesando"
 
-            data = obtener_datos()
+            data = safe_obtener_datos()
 
             if not data:
                 CACHE_IA["status"] = "sin_datos"
@@ -189,7 +198,7 @@ def dashboard_data(
     routers: str | None = Query(default=None, description="Routers separados por coma")
 ):
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     if routers:
         allowed = {r.strip() for r in routers.split(",") if r.strip()}
@@ -225,7 +234,7 @@ def dashboard_data(
 @app.get("/ppp/summary")
 def ppp_summary():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total = len(data)
 
@@ -250,7 +259,7 @@ def ppp_summary():
 @app.get("/ppp/top-rx")
 def top_rx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("rx", 0), reverse=True)[:20]
 
@@ -271,7 +280,7 @@ def top_rx():
 @app.get("/ppp/top-tx")
 def top_tx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("tx", 0), reverse=True)[:20]
 
@@ -292,7 +301,7 @@ def top_tx():
 @app.get("/ppp/by-vlan")
 def by_vlan():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     return [{"vlan": 0, "users": len(data)}]
 
@@ -303,7 +312,7 @@ def by_vlan():
 @app.get("/ppp/by-server")
 def by_server():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     result = {}
 
@@ -323,7 +332,7 @@ def by_server():
 @app.get("/ppp/history")
 def history():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total_rx = sum(u.get("rx", 0) for u in data)
     total_tx = sum(u.get("tx", 0) for u in data)
