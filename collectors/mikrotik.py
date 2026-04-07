@@ -2,11 +2,17 @@
 # CONEXION MIKROTIK
 # ==================================================
 
-from routeros_api import RouterOsApiPool
+try:
+    from routeros_api import RouterOsApiPool
+except Exception:
+    RouterOsApiPool = None
 
 
 # 🔌 conexión
 def connect_to_router(router):
+
+    if RouterOsApiPool is None:
+        raise RuntimeError("routeros_api no está instalado")
 
     connection = RouterOsApiPool(
         router["ip"],
@@ -33,10 +39,13 @@ def obtener_ppp_activos():
         "port": 8728
     }
 
-    api = connect_to_router(router)
-
-    ppp_active = api.get_resource('/ppp/active')
-    usuarios = ppp_active.get()
+    try:
+        api = connect_to_router(router)
+        ppp_active = api.get_resource('/ppp/active')
+        usuarios = ppp_active.get()
+    except Exception as e:
+        print(f"⚠️ Error obteniendo PPP activos desde MikroTik: {e}")
+        return []
 
     resultado = []
 
@@ -56,7 +65,11 @@ def obtener_ppp_activos():
 # ==================================================
 def obtener_datos():
 
-    raw_data = obtener_ppp_activos()
+    try:
+        raw_data = obtener_ppp_activos()
+    except Exception as e:
+        print(f"⚠️ Error en obtener_datos(): {e}")
+        return []
 
     resultado = []
 
@@ -66,7 +79,11 @@ def obtener_datos():
                 "usuario": u.get("username"),
                 "rx": int(u.get("rx_bps", 0)),
                 "tx": int(u.get("tx_bps", 0)),
-                "uptime": u.get("uptime", 0)
+                "uptime": u.get("uptime", 0),
+                # Campos opcionales para IA de revendedores
+                "ips_detectadas": u.get("ips_detectadas", u.get("ip_count", 1)),
+                "conexiones": u.get("conexiones", u.get("connection_count", 0)),
+                "uso_constante": u.get("uso_constante", False)
             })
         except:
             continue
