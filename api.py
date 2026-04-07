@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import threading
 import time
 import datetime
+import subprocess
 
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
@@ -43,6 +44,16 @@ app = FastAPI(title="NetAI NOC", version="2.0")
 app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
 
 
+@app.middleware("http")
+async def disable_dashboard_cache(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/dashboard") or request.url.path.startswith("/dashboard_static"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # =========================
 # MODELO
 # =========================
@@ -64,6 +75,23 @@ def home():
         "status": "NetAI running 🚀",
         "ia_status": CACHE_IA["status"],
         "last_update": CACHE_IA["last_update"]
+    }
+
+
+@app.get("/version")
+def version():
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True
+        ).strip()
+    except Exception:
+        commit = "unknown"
+
+    return {
+        "app": "NetAI NOC",
+        "commit": commit,
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
 

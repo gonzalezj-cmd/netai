@@ -16,6 +16,7 @@
 <div id="nav"></div>
 
 <h1>🚀 NOC PRO</h1>
+<div id="buildInfo" style="font-size:12px;opacity:.7;margin-bottom:10px;"></div>
 
 <!-- KPI -->
 <div class="grid" style="grid-template-columns: repeat(4,1fr);">
@@ -410,6 +411,18 @@ async function loadNav(){
 }
 
 loadNav()
+
+async function loadVersion(){
+    try{
+        const r = await fetch("/version")
+        const v = await r.json()
+        document.getElementById("buildInfo").innerText = `Build: ${v.commit} | ${v.ts}`
+    }catch(e){
+        document.getElementById("buildInfo").innerText = "Build: no disponible"
+    }
+}
+
+loadVersion()
 
 </script>
 
