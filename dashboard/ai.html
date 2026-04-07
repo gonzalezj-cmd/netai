@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>Softmikro AI</title>
+
+<style>
+
+body{
+    background:#0b0f14;
+    color:white;
+    font-family:Arial;
+}
+
+/* alertas */
+.alert{
+    padding:12px;
+    margin:10px 0;
+    border-radius:6px;
+}
+
+.critico{ background:#8b0000; }
+.warning{ background:#d97706; }
+.ok{ background:#065f46; }
+
+/* tabla IA */
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:20px;
+}
+
+th, td{
+    padding:10px;
+    border-bottom:1px solid #333;
+    text-align:left;
+}
+
+.alto{
+    background:#7f1d1d;
+}
+
+.medio{
+    background:#92400e;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="nav"></div>
+
+<h1>🧠 AI Network Panel</h1>
+
+<!-- ========================= -->
+<!-- ALERTAS (LO QUE YA TENÍAS) -->
+<!-- ========================= -->
+<h2>⚠️ Alertas</h2>
+<div id="alerts"></div>
+
+<!-- ========================= -->
+<!-- REVendedores IA (NUEVO) -->
+<!-- ========================= -->
+<h2>🚨 Posibles Revendedores</h2>
+
+<div id="contador"></div>
+
+<table id="tabla_revendedores">
+    <thead>
+        <tr>
+            <th>Usuario</th>
+            <th>Score</th>
+            <th>Ratio</th>
+            <th>Consumo</th>
+            <th>Riesgo</th>
+            <th>Router</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+
+// =========================
+// ALERTAS (TU SISTEMA)
+// =========================
+async function loadAnalysis(){
+
+    let res = await fetch("/ia/full")
+    let data = await res.json()
+
+    let alerts = document.getElementById("alerts")
+    alerts.innerHTML=""
+
+    if(!data.analysis || !data.analysis.alertas){
+        alerts.innerHTML="<div class='alert ok'>Sin alertas</div>"
+        return
+    }
+
+    data.analysis.alertas.forEach(a=>{
+
+        let cls="ok"
+        if(a.nivel=="CRITICO") cls="critico"
+        if(a.nivel=="WARNING") cls="warning"
+
+        alerts.innerHTML+=`
+        <div class="alert ${cls}">
+        ${a.nivel} - ${a.mensaje}
+        </div>
+        `
+    })
+}
+
+
+// =========================
+// IA NUEVA (REVendedores)
+// =========================
+async function loadIA(){
+
+    let res = await fetch("/ia/full")
+    let data = await res.json()
+
+    let tabla = document.querySelector("#tabla_revendedores tbody")
+    tabla.innerHTML=""
+
+    if(!data.revendedores){
+        return
+    }
+
+    // contador
+    document.getElementById("contador").innerText =
+        "Detectados: " + data.revendedores.length
+
+    data.revendedores.forEach(u=>{
+
+        let cls=""
+        if(u.riesgo=="ALTO") cls="alto"
+        if(u.riesgo=="MEDIO") cls="medio"
+
+        tabla.innerHTML+=`
+        <tr class="${cls}">
+            <td>${u.usuario}</td>
+            <td>${u.score}</td>
+            <td>${u.ratio}</td>
+            <td>${(u.consumo / (1024**3)).toFixed(2)} GB</td>
+            <td>${u.riesgo}</td>
+            <td>${u.router}</td>
+        </tr>
+        `
+    })
+}
+
+
+// =========================
+// AUTO REFRESH
+// =========================
+function loop(){
+    loadAnalysis()
+    loadIA()
+}
+
+loop()
+setInterval(loop, 5000)
+
+</script>
+
+</body>
+</html>

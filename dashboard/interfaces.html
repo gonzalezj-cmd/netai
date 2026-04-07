@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Interfaces</title>
+
+</head>
+
+<body style="background:#0b0f14;color:white;font-family:Arial;">
+
+<div id="nav"></div>
+
+<h1>Interfaces</h1>
+
+<div id="interfaces"></div>
+
+<script>
+
+async function loadNav(){
+
+let res = await fetch("/dashboard_static/nav.html")
+let html = await res.text()
+
+document.getElementById("nav").innerHTML = html
+
+}
+
+async function loadInterfaces(){
+
+let res = await fetch("/interfaces")
+let data = await res.json()
+
+let div=document.getElementById("interfaces")
+
+div.innerHTML=""
+
+data.forEach(i=>{
+
+div.innerHTML+=`
+<p>${i.interface} RX:${i.rx} TX:${i.tx}</p>
+`
+
+})
+
+}
+
+loadNav()
+loadInterfaces()
+
+</script>
+
+</body>
+</html>

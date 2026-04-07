@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>PPP Sessions</title>
+
+<style>
+
+body{
+background:#0b0f14;
+color:white;
+font-family:Arial;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+td,th{
+padding:8px;
+border-bottom:1px solid #333;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="nav"></div>
+
+<h1>PPP Sessions</h1>
+
+<table>
+
+<thead>
+<tr>
+<th>Usuario</th>
+<th>IP</th>
+<th>Uptime</th>
+</tr>
+</thead>
+
+<tbody id="ppp_table"></tbody>
+
+</table>
+
+<script>
+
+async function loadNav(){
+
+let res = await fetch("/dashboard_static/nav.html")
+let html = await res.text()
+
+document.getElementById("nav").innerHTML = html
+
+}
+
+async function loadPPP(){
+
+let res = await fetch("/ppp")
+let data = await res.json()
+
+let table=document.getElementById("ppp_table")
+
+table.innerHTML=""
+
+data.forEach(p=>{
+
+let row=`
+<tr>
+<td>${p.username}</td>
+<td>${p.ip}</td>
+<td>${p.uptime}</td>
+</tr>
+`
+
+table.innerHTML+=row
+
+})
+
+}
+
+loadNav()
+loadPPP()
+
+</script>
+
+</body>
+</html>

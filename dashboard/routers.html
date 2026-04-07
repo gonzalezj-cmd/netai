@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Routers</title>
+
+<style>
+body{
+background:#0b0f14;
+color:white;
+font-family:Arial;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+td,th{
+padding:10px;
+border-bottom:1px solid #333;
+}
+
+button{
+padding:5px 10px;
+cursor:pointer;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>Routers registrados</h1>
+
+<table id="tabla">
+<thead>
+<tr>
+<th>ID</th>
+<th>Nombre</th>
+<th>IP</th>
+<th>Usuario</th>
+<th>Puerto</th>
+<th>Acción</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<script>
+
+async function cargar(){
+
+let res = await fetch("/routers")
+let data = await res.json()
+
+let tbody = document.querySelector("#tabla tbody")
+tbody.innerHTML=""
+
+data.forEach(r=>{
+
+tbody.innerHTML += `
+<tr>
+<td>${r.id}</td>
+<td>${r.name}</td>
+<td>${r.ip}</td>
+<td>${r.username}</td>
+<td>${r.port}</td>
+<td>
+<button onclick="editar(${r.id})">Editar</button>
+</td>
+</tr>
+`
+
+})
+
+}
+
+function editar(id){
+
+let name = prompt("Nombre")
+let ip = prompt("IP")
+let user = prompt("Usuario")
+let pass = prompt("Password")
+let port = prompt("Puerto")
+
+fetch("/routers/"+id,{
+method:"PUT",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+name:name,
+ip:ip,
+username:user,
+password:pass,
+port:parseInt(port),
+description:""
+})
+}).then(()=>{
+alert("Actualizado")
+cargar()
+})
+
+}
+
+cargar()
+
+</script>
+
+</body>
+</html>

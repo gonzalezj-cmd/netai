@@ -1,0 +1,241 @@
+
+********ARRANCAR EL SISTEMA*******
+
+
+
+~/netai/start-softmikro.sh
+
+http://10.226.4.35:8000
+
+api-key GPT
+OPENAI_API_KEY=YOUR_API_KEY
+
+================================================
+SOFTMIKRO - SISTEMA DE MONITOREO DE RED
+================================================
+
+Autor: Juan Gonzalez
+Sistema: Softmikro
+Ubicación: ~/netai
+Servidor: dbsoftmikro
+Base de datos: PostgreSQL
+Lenguaje: Python
+Framework API: FastAPI
+
+
+================================================
+OBJETIVO DEL SISTEMA
+================================================
+
+Softmikro es un sistema de monitoreo para redes ISP basado en MikroTik.
+
+Permite:
+
+- monitorear sesiones PPPoE
+- monitorear tráfico de interfaces
+- detectar caídas de PPPoE
+- detectar saturación de VLAN
+- detectar revendedores NAT
+- crear dashboards NOC
+- almacenar histórico de red
+
+
+================================================
+ARQUITECTURA
+================================================
+
+MikroTik Router
+      │
+      │ API RouterOS
+      │
+Collector Python
+      │
+      │
+PostgreSQL Database
+      │
+      │
+FastAPI
+      │
+      │
+Dashboard Web
+
+
+================================================
+DIRECTORIOS DEL PROYECTO
+================================================
+
+~/netai
+
+analysis/
+    análisis de red e IA
+
+collectors/
+    mikrotik.py
+    interfaces.py
+
+database/
+    postgres.py
+
+config/
+    configuración del sistema
+
+venv/
+    entorno python
+
+main.py
+    colector principal
+
+api.py
+    api web
+
+documentacion-softmikro.txt
+    documentación del sistema
+
+
+================================================
+BASE DE DATOS
+================================================
+
+Base: netmonitor
+
+Tablas principales:
+
+routers
+    routers monitoreados
+
+ppp_sessions
+    sesiones PPP activas
+
+interface_traffic
+    tráfico de interfaces
+
+
+================================================
+TABLA routers
+================================================
+
+id
+name
+ip
+username
+password
+port
+description
+active
+
+
+================================================
+TABLA ppp_sessions
+================================================
+
+id
+router_id
+username
+address
+caller_id
+uptime
+interface
+created_at
+
+
+================================================
+TABLA interface_traffic
+================================================
+
+id
+router_id
+interface
+rx_bytes
+tx_bytes
+timestamp
+rx_bps
+tx_bps
+
+
+================================================
+COMPONENTES DEL SISTEMA
+================================================
+
+Collector PPP
+    consulta /ppp/active
+
+Collector Interfaces
+    consulta /interface
+
+API
+    entrega datos al dashboard
+
+
+================================================
+COMANDOS IMPORTANTES
+================================================
+
+activar entorno python
+
+source ~/netai/venv/bin/activate
+
+
+ejecutar colector
+
+python main.py
+
+
+ejecutar API
+
+uvicorn api:app --host 0.0.0.0 --port 8000
+
+
+entrar a base de datos
+
+sudo -u postgres psql netmonitor
+
+
+================================================
+ENDPOINTS API
+================================================
+
+/
+
+estado del sistema
+
+
+/routers
+
+routers monitoreados
+
+
+/ppp
+
+últimas sesiones ppp
+
+
+/interfaces
+
+últimos datos de interfaces
+
+
+================================================
+IDEAS FUTURAS
+================================================
+
+detección automática de:
+
+- revendedores NAT
+- saturación VLAN
+- caída de pppoe
+- balanceo de carga
+
+alertas:
+
+- Telegram
+- Email
+- Dashboard NOC
+
+IA de análisis de red
+
+
+================================================
+NOTAS
+================================================
+
+Este archivo debe actualizarse con cada cambio en el sistema.

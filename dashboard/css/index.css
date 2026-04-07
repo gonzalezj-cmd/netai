@@ -1,0 +1,45 @@
+
+
+body{
+    background:#0b0f14;
+    color:white;
+    font-family:Arial;
+    margin:20px;
+}
+
+.grid{
+    display:grid;
+    gap:20px;
+}
+
+.card{
+    background:#111827;
+    padding:15px;
+    border-radius:10px;
+}
+
+.stat{
+    font-size:24px;
+    font-weight:bold;
+}
+
+.table{
+    width:100%;
+    font-size:13px;
+}
+
+.row{
+    display:grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    padding:6px;
+    border-bottom:1px solid #1f2937;
+}
+
+.header{
+    font-weight:bold;
+    color:#9ca3af;
+}
+
+.good{ color:#22c55e; }
+.warn{ color:#f59e0b; }
+.crit{ color:#ef4444; }

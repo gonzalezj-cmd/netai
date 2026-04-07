@@ -1,0 +1,98 @@
+<!-- add_router.html -->
+<html>
+
+<head>
+
+<title>Agregar MikroTik</title>
+
+<style>
+
+body{
+background:#0b0f14;
+color:white;
+font-family:Arial;
+}
+
+input{
+display:block;
+margin:10px;
+padding:10px;
+width:300px;
+}
+
+button{
+padding:10px;
+background:#4fc3f7;
+border:none;
+}
+
+</style>
+
+</head>
+
+<body>
+<div id="nav"></div>
+<h1>Agregar MikroTik</h1>
+
+<input id="name" placeholder="Nombre router">
+<input id="ip" placeholder="IP router">
+<input id="user" placeholder="Usuario">
+<input id="pass" placeholder="Password">
+<input id="port" placeholder="Puerto (8728)">
+
+<button onclick="addRouter()">Agregar</button>
+
+<script>
+
+async function addRouter(){
+
+let data={
+name:document.getElementById("name").value,
+ip:document.getElementById("ip").value,
+username:document.getElementById("user").value,
+password:document.getElementById("pass").value,
+port:parseInt(document.getElementById("port").value || 8728)
+}
+
+let res = await fetch("/routers/add",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify(data)
+})
+
+if(res.ok){
+alert("Router agregado correctamente")
+
+// limpiar
+document.getElementById("name").value=""
+document.getElementById("ip").value=""
+document.getElementById("user").value=""
+document.getElementById("pass").value=""
+document.getElementById("port").value=""
+}else{
+alert("Error al guardar")
+}
+
+}
+
+</script>
+
+<script>
+
+async function loadNav(){
+
+let res = await fetch("/dashboard_static/nav.html")
+let html = await res.text()
+
+document.getElementById("nav").innerHTML = html
+
+}
+
+loadNav()
+
+</script>
+
+</body>
+</html>

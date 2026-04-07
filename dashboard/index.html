@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Softmikro NOC PRO</title>
+
+<link rel="stylesheet" href="/dashboard_static/css/nav.css">
+<link rel="stylesheet" href="/dashboard_static/css/index.css">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<!-- NAV -->
+<div id="nav"></div>
+
+<h1>🚀 NOC PRO</h1>
+
+<!-- KPI -->
+<div class="grid" style="grid-template-columns: repeat(4,1fr);">
+
+<div class="card">
+<h3>>50 Mbps</h3>
+<div id="u50" class="stat good">0</div>
+</div>
+
+<div class="card">
+<h3>>100 Mbps</h3>
+<div id="u100" class="stat warn">0</div>
+</div>
+
+<div class="card">
+<h3>>500 Mbps</h3>
+<div id="u500" class="stat crit">0</div>
+</div>
+
+<div class="card">
+<h3>PPP Activos</h3>
+<div id="ppp" class="stat">0</div>
+</div>
+
+</div>
+
+<br>
+
+<!-- TOP -->
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+
+<div class="card">
+<h3>🔥 Top RX</h3>
+
+<div class="row header">
+<div>Usuario</div>
+<div>Mbps</div>
+<div>PPPoE</div>
+<div>VLAN</div>
+</div>
+
+<div id="top_rx"></div>
+
+</div>
+
+<div class="card">
+<h3>🔥 Top TX</h3>
+
+<div class="row header">
+<div>Usuario</div>
+<div>Mbps</div>
+<div>PPPoE</div>
+<div>VLAN</div>
+</div>
+
+<div id="top_tx"></div>
+
+</div>
+
+</div>
+
+<br>
+
+<!-- NUEVO BLOQUE -->
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+
+<div class="card">
+<h3>📊 Usuarios por VLAN</h3>
+<div id="byVlan"></div>
+</div>
+
+<div class="card">
+<h3>📡 Usuarios por PPPoE</h3>
+<div id="byServer"></div>
+</div>
+
+</div>
+
+<br>
+
+<!-- GRAFICO -->
+<div class="card">
+<h3>📊 Tráfico Total (RX vs TX)</h3>
+<canvas id="trafficChart"></canvas>
+</div>
+
+<script>
+
+// =============================
+// CACHE GLOBAL 🔥
+// =============================
+let cache = {
+    summary: null,
+    rx: [],
+    tx: [],
+    vlan: [],
+    server: [],
+    chart: []
+}
+
+// =============================
+// FORMATEO
+// =============================
+function format(bps){
+    if(!bps) return 0
+    if(bps > 1e9) return (bps/1e9).toFixed(2)
+    if(bps > 1e6) return (bps/1e6).toFixed(2)
+    if(bps > 1e3) return (bps/1e3).toFixed(2)
+    return bps
+}
+
+// =============================
+// SUMMARY + TOP
+// =============================
+async function load(){
+
+    try{
+
+        let ppp = await fetch("/ppp/summary")
+        let pppData = await ppp.json()
+        cache.summary = pppData
+
+    }catch(e){
+        console.log("uso cache summary")
+    }
+
+    if(cache.summary){
+
+        document.getElementById("ppp").innerHTML = `
+        ${cache.summary.total}
+        <div style="font-size:12px;margin-top:5px;">
+        ${
+            (cache.summary.by_server || [])
+            .filter(s => s.pppoe !== "UNKNOWN")
+            .map(s => `${s.pppoe}: ${s.users}`)
+            .join("<br>")
+        }
+        </div>`
+    }
+
+    // ================= RX =================
+    try{
+        let rx = await fetch("/ppp/top-rx")
+        cache.rx = await rx.json()
+    }catch(e){
+        console.log("uso cache rx")
+    }
+
+    if(cache.rx.length){
+
+        let rxDiv = document.getElementById("top_rx")
+
+        let html = ""
+        let c50=0,c100=0,c500=0
+
+        cache.rx.forEach(u=>{
+
+            let cls="good"
+
+            if(u.rx > 500e6){cls="crit";c500++}
+            else if(u.rx > 100e6){cls="warn";c100++}
+            else if(u.rx > 50e6){c50++}
+
+            html += `
+            <div class="row ${cls}">
+                <div>${u.user}</div>
+                <div>${format(u.rx)}</div>
+                <div>${u.pppoe}</div>
+                <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
+            </div>`
+        })
+
+        rxDiv.innerHTML = html
+
+        document.getElementById("u50").innerText = c50
+        document.getElementById("u100").innerText = c100
+        document.getElementById("u500").innerText = c500
+    }
+
+    // ================= TX =================
+    try{
+        let tx = await fetch("/ppp/top-tx")
+        cache.tx = await tx.json()
+    }catch(e){
+        console.log("uso cache tx")
+    }
+
+    if(cache.tx.length){
+
+        let txDiv = document.getElementById("top_tx")
+
+        let html = ""
+
+        cache.tx.forEach(u=>{
+            html += `
+            <div class="row">
+                <div>${u.user}</div>
+                <div>${format(u.tx)}</div>
+                <div>${u.pppoe}</div>
+                <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
+            </div>`
+        })
+
+        txDiv.innerHTML = html
+    }
+}
+
+// =============================
+// VLAN
+// =============================
+async function loadByVlan(){
+
+    try{
+        let res = await fetch("/ppp/by-vlan")
+        cache.vlan = await res.json()
+    }catch(e){
+        console.log("uso cache vlan")
+    }
+
+    if(cache.vlan.length){
+
+        let div = document.getElementById("byVlan")
+
+        let html = ""
+
+        cache.vlan.forEach(v=>{
+            html += `
+            <div class="row">
+                <div>VLAN ${v.vlan}</div>
+                <div>${v.users}</div>
+            </div>`
+        })
+
+        div.innerHTML = html
+    }
+}
+
+// =============================
+// PPPoE
+// =============================
+async function loadByServer(){
+
+    try{
+        let res = await fetch("/ppp/by-server")
+        cache.server = await res.json()
+    }catch(e){
+        console.log("uso cache server")
+    }
+
+    if(cache.server.length){
+
+        let div = document.getElementById("byServer")
+
+        let html = ""
+
+        cache.server.forEach(s=>{
+            html += `
+            <div class="row">
+                <div>${s.pppoe}</div>
+                <div>${s.users}</div>
+            </div>`
+        })
+
+        div.innerHTML = html
+    }
+}
+
+// =============================
+// CHART SIN RESETEO 🔥
+// =============================
+let chart;
+
+async function loadChart(){
+
+    try{
+        let res = await fetch("/ppp/history")
+        cache.chart = await res.json()
+    }catch(e){
+        console.log("uso cache chart")
+    }
+
+    if(!Array.isArray(cache.chart) || cache.chart.length === 0){
+        return
+    }
+
+    let labels = cache.chart.map(d => d.time)
+    let rx = cache.chart.map(d => d.rx / 1e6)
+    let tx = cache.chart.map(d => d.tx / 1e6)
+
+    if(!chart){
+        chart = new Chart(document.getElementById("trafficChart"), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: "RX Mbps", data: rx },
+                    { label: "TX Mbps", data: tx }
+                ]
+            },
+            options: {
+                responsive: true,
+                animation: false
+            }
+        })
+    } else {
+        chart.data.labels = labels
+        chart.data.datasets[0].data = rx
+        chart.data.datasets[1].data = tx
+        chart.update()
+    }
+}
+
+// =============================
+// LOOP
+// =============================
+async function loop(){
+    load()
+    loadChart()
+    loadByVlan()
+    loadByServer()
+}
+
+loop()
+setInterval(loop, 4000)
+
+// =============================
+// NAV
+// =============================
+async function loadNav(){
+    let res = await fetch("/dashboard_static/nav.html")
+    let html = await res.text()
+    document.getElementById("nav").innerHTML = html
+}
+
+loadNav()
+
+</script>
+
+</body>
+</html>
