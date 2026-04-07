@@ -2,7 +2,7 @@
 # API FINAL LIMPIO - NETAI
 # ==================================================
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import threading
 import time
 import datetime
+import subprocess
 
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
@@ -26,12 +27,31 @@ CACHE_IA = {
 }
 
 
+def safe_obtener_datos():
+    try:
+        data = obtener_datos()
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"⚠️ Error leyendo datos de collectors: {e}")
+        return []
+
+
 # =========================
 # APP
 # =========================
 app = FastAPI(title="NetAI NOC", version="2.0")
 
 app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
+
+
+@app.middleware("http")
+async def disable_dashboard_cache(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/dashboard") or request.url.path.startswith("/dashboard_static"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 # =========================
@@ -55,6 +75,23 @@ def home():
         "status": "NetAI running 🚀",
         "ia_status": CACHE_IA["status"],
         "last_update": CACHE_IA["last_update"]
+    }
+
+
+@app.get("/version")
+def version():
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True
+        ).strip()
+    except Exception:
+        commit = "unknown"
+
+    return {
+        "app": "NetAI NOC",
+        "commit": commit,
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
 
@@ -93,7 +130,7 @@ def loop_ia():
 
             CACHE_IA["status"] = "procesando"
 
-            data = obtener_datos()
+            data = safe_obtener_datos()
 
             if not data:
                 CACHE_IA["status"] = "sin_datos"
@@ -184,9 +221,16 @@ def update_router(router_id: int, router: RouterCreate):
 # DASHBOARD DATA
 # =========================
 @app.get("/dashboard/data")
-def dashboard_data():
+def dashboard_data(
+    include: str | None = Query(default=None, description="Campos separados por coma"),
+    routers: str | None = Query(default=None, description="Routers separados por coma")
+):
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
+
+    if routers:
+        allowed = {r.strip() for r in routers.split(",") if r.strip()}
+        data = [u for u in data if u.get("router", "N/A") in allowed]
 
     total = len(data)
 
@@ -196,10 +240,20 @@ def dashboard_data():
         r = u.get("router", "N/A")
         por_router[r] = por_router.get(r, 0) + 1
 
-    return {
+    result = {
         "ppp_activos": total,
-        "usuarios_por_router": por_router
+        "usuarios_por_router": por_router,
+        "total_rx_bps": sum(u.get("rx", 0) for u in data),
+        "total_tx_bps": sum(u.get("tx", 0) for u in data),
+        "top_rx_user": max(data, key=lambda x: x.get("rx", 0), default={}).get("usuario"),
+        "top_tx_user": max(data, key=lambda x: x.get("tx", 0), default={}).get("usuario")
     }
+
+    if not include:
+        return result
+
+    requested = [k.strip() for k in include.split(",") if k.strip()]
+    return {k: result.get(k) for k in requested if k in result}
 
 
 # =========================
@@ -208,7 +262,7 @@ def dashboard_data():
 @app.get("/ppp/summary")
 def ppp_summary():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total = len(data)
 
@@ -233,7 +287,7 @@ def ppp_summary():
 @app.get("/ppp/top-rx")
 def top_rx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("rx", 0), reverse=True)[:20]
 
@@ -254,7 +308,7 @@ def top_rx():
 @app.get("/ppp/top-tx")
 def top_tx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("tx", 0), reverse=True)[:20]
 
@@ -275,7 +329,7 @@ def top_tx():
 @app.get("/ppp/by-vlan")
 def by_vlan():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     return [{"vlan": 0, "users": len(data)}]
 
@@ -286,7 +340,7 @@ def by_vlan():
 @app.get("/ppp/by-server")
 def by_server():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     result = {}
 
@@ -306,7 +360,7 @@ def by_server():
 @app.get("/ppp/history")
 def history():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total_rx = sum(u.get("rx", 0) for u in data)
     total_tx = sum(u.get("tx", 0) for u in data)
