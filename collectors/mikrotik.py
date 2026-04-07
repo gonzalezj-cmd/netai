@@ -33,9 +33,9 @@ def obtener_ppp_activos():
 
     # 🔴 CONFIGURÁ ESTO (temporal)
     router = {
-        "ip": "127.0.0.1",   # ← CAMBIAR POR TU MIKROTIK
-        "username": "admin",
-        "password": "admin",
+        "ip": "10.226.0.99",   # ← CAMBIAR POR TU MIKROTIK
+        "username": "chichi",
+        "password": "yobancoalremisero",
         "port": 8728
     }
 
