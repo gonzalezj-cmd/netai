@@ -2,7 +2,7 @@
 # API FINAL LIMPIO - NETAI
 # ==================================================
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -184,9 +184,16 @@ def update_router(router_id: int, router: RouterCreate):
 # DASHBOARD DATA
 # =========================
 @app.get("/dashboard/data")
-def dashboard_data():
+def dashboard_data(
+    include: str | None = Query(default=None, description="Campos separados por coma"),
+    routers: str | None = Query(default=None, description="Routers separados por coma")
+):
 
     data = obtener_datos()
+
+    if routers:
+        allowed = {r.strip() for r in routers.split(",") if r.strip()}
+        data = [u for u in data if u.get("router", "N/A") in allowed]
 
     total = len(data)
 
@@ -196,10 +203,20 @@ def dashboard_data():
         r = u.get("router", "N/A")
         por_router[r] = por_router.get(r, 0) + 1
 
-    return {
+    result = {
         "ppp_activos": total,
-        "usuarios_por_router": por_router
+        "usuarios_por_router": por_router,
+        "total_rx_bps": sum(u.get("rx", 0) for u in data),
+        "total_tx_bps": sum(u.get("tx", 0) for u in data),
+        "top_rx_user": max(data, key=lambda x: x.get("rx", 0), default={}).get("usuario"),
+        "top_tx_user": max(data, key=lambda x: x.get("tx", 0), default={}).get("usuario")
     }
+
+    if not include:
+        return result
+
+    requested = [k.strip() for k in include.split(",") if k.strip()]
+    return {k: result.get(k) for k in requested if k in result}
 
 
 # =========================

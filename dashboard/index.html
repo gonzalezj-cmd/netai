@@ -96,6 +96,14 @@
 
 <br>
 
+<!-- DATOS INDICADOS -->
+<div class="card">
+<h3>🧩 Datos indicados</h3>
+<div id="customData"></div>
+</div>
+
+<br>
+
 <!-- GRAFICO -->
 <div class="card">
 <h3>📊 Tráfico Total (RX vs TX)</h3>
@@ -115,6 +123,10 @@ let cache = {
     server: [],
     chart: []
 }
+
+const params = new URLSearchParams(window.location.search)
+const includeFields = (params.get("include") || "").trim()
+const routerFilter = (params.get("routers") || "").trim()
 
 // =============================
 // FORMATEO
@@ -284,6 +296,52 @@ async function loadByServer(){
 }
 
 // =============================
+// DATOS INDICADOS DESDE /dashboard/data
+// Ejemplo:
+// /dashboard?include=ppp_activos,total_rx_bps,top_rx_user&routers=router1,router2
+// =============================
+async function loadCustomData(){
+
+    let url = "/dashboard/data"
+    let q = []
+
+    if(includeFields){
+        q.push(`include=${encodeURIComponent(includeFields)}`)
+    }
+
+    if(routerFilter){
+        q.push(`routers=${encodeURIComponent(routerFilter)}`)
+    }
+
+    if(q.length){
+        url += "?" + q.join("&")
+    }
+
+    let div = document.getElementById("customData")
+
+    try{
+        let res = await fetch(url)
+        let data = await res.json()
+        let keys = Object.keys(data)
+
+        if(!keys.length){
+            div.innerHTML = `<div class="row"><div>Sin datos para los filtros indicados</div></div>`
+            return
+        }
+
+        div.innerHTML = keys.map(k => `
+            <div class="row">
+                <div>${k}</div>
+                <div>${typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]}</div>
+            </div>
+        `).join("")
+
+    }catch(e){
+        div.innerHTML = `<div class="row"><div>No se pudo cargar /dashboard/data</div></div>`
+    }
+}
+
+// =============================
 // CHART SIN RESETEO 🔥
 // =============================
 let chart;
@@ -336,6 +394,7 @@ async function loop(){
     loadChart()
     loadByVlan()
     loadByServer()
+    loadCustomData()
 }
 
 loop()

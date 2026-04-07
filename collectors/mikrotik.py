@@ -66,7 +66,11 @@ def obtener_datos():
                 "usuario": u.get("username"),
                 "rx": int(u.get("rx_bps", 0)),
                 "tx": int(u.get("tx_bps", 0)),
-                "uptime": u.get("uptime", 0)
+                "uptime": u.get("uptime", 0),
+                # Campos opcionales para IA de revendedores
+                "ips_detectadas": u.get("ips_detectadas", u.get("ip_count", 1)),
+                "conexiones": u.get("conexiones", u.get("connection_count", 0)),
+                "uso_constante": u.get("uso_constante", False)
             })
         except:
             continue
