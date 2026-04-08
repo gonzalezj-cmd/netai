@@ -1,7 +1,14 @@
+import threading
+import time
 from database.postgres import get_connection
 
+_CACHE_TTL_SECONDS = 2
+_CACHE_LOCK = threading.Lock()
+_CACHE_DATA = []
+_CACHE_TS = 0.0
 
-def get_latest_ppp_live():
+
+def _fetch_latest_ppp_live():
     conn = None
     cur = None
     try:
@@ -46,3 +53,28 @@ def get_latest_ppp_live():
             cur.close()
         if conn:
             conn.close()
+
+
+def get_latest_ppp_live(force_refresh: bool = False):
+    global _CACHE_DATA, _CACHE_TS
+
+    now = time.time()
+    if not force_refresh and _CACHE_DATA and (now - _CACHE_TS) < _CACHE_TTL_SECONDS:
+        return _CACHE_DATA
+
+    with _CACHE_LOCK:
+        now = time.time()
+        if not force_refresh and _CACHE_DATA and (now - _CACHE_TS) < _CACHE_TTL_SECONDS:
+            return _CACHE_DATA
+
+        fresh = _fetch_latest_ppp_live()
+        if fresh:
+            _CACHE_DATA = fresh
+            _CACHE_TS = now
+            return _CACHE_DATA
+
+        # Si falla BD, devolvemos último valor conocido para evitar vacíos masivos.
+        if _CACHE_DATA:
+            return _CACHE_DATA
+
+        return []

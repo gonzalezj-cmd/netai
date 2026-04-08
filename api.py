@@ -26,9 +26,11 @@ CACHE_IA = {
     "last_update": None,
     "status": "inicializando"
 }
+LAST_GOOD_DATA = []
 
 
 def safe_obtener_datos():
+    global LAST_GOOD_DATA
     # 1) Fuente principal: BD ppp_live + ppp_sessions + routers
     conn = None
     cur = None
@@ -49,7 +51,7 @@ def safe_obtener_datos():
         rows = cur.fetchall()
 
         if rows:
-            return [
+            data = [
                 {
                     "usuario": r[0],
                     "rx": int(r[1] or 0),
@@ -59,8 +61,12 @@ def safe_obtener_datos():
                 }
                 for r in rows
             ]
+            LAST_GOOD_DATA = data
+            return data
     except Exception as e:
         print(f"⚠️ Error leyendo ppp_live desde BD: {e}")
+        if LAST_GOOD_DATA:
+            return LAST_GOOD_DATA
     finally:
         if cur:
             cur.close()
@@ -70,10 +76,13 @@ def safe_obtener_datos():
     # 2) Fallback: collector mikrotik directo
     try:
         data = obtener_datos()
-        return data if isinstance(data, list) else []
+        if isinstance(data, list) and data:
+            LAST_GOOD_DATA = data
+            return data
+        return LAST_GOOD_DATA
     except Exception as e:
         print(f"⚠️ Error leyendo datos de collectors: {e}")
-        return []
+        return LAST_GOOD_DATA
 
 
 # =========================
