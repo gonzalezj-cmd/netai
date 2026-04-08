@@ -302,6 +302,14 @@ def add_router(router: RouterCreate):
             conn.close()
 
 
+@app.post("/routers")
+def add_router_alias(router: RouterCreate):
+    """
+    Alias para compatibilidad con frontends que envían POST /routers.
+    """
+    return add_router(router)
+
+
 @app.post("/collect/now")
 def collect_now():
     """
