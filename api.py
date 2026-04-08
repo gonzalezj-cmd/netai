@@ -41,13 +41,9 @@ def safe_obtener_datos():
                 pl.username,
                 COALESCE(pl.rx_bps, 0) AS rx_bps,
                 COALESCE(pl.tx_bps, 0) AS tx_bps,
-                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
-                COALESCE(ps.uptime, '0s') AS uptime
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
             FROM ppp_live pl
             LEFT JOIN routers r ON r.id = pl.router_id
-            LEFT JOIN ppp_sessions ps
-                ON ps.router_id = pl.router_id
-               AND ps.username = pl.username
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
         """)
         rows = cur.fetchall()
@@ -59,7 +55,7 @@ def safe_obtener_datos():
                     "rx": int(r[1] or 0),
                     "tx": int(r[2] or 0),
                     "router": r[3] or "UNKNOWN",
-                    "uptime": r[4]
+                    "uptime": "0s"
                 }
                 for r in rows
             ]
