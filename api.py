@@ -28,6 +28,49 @@ CACHE_IA = {
 
 
 def safe_obtener_datos():
+    # 1) Fuente principal: BD ppp_live + ppp_sessions + routers
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (pl.router_id, pl.username)
+                pl.username,
+                COALESCE(pl.rx_bps, 0) AS rx_bps,
+                COALESCE(pl.tx_bps, 0) AS tx_bps,
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
+                COALESCE(ps.uptime, '0s') AS uptime
+            FROM ppp_live pl
+            LEFT JOIN routers r ON r.id = pl.router_id
+            LEFT JOIN ppp_sessions ps
+                ON ps.router_id = pl.router_id
+               AND ps.username = pl.username
+            ORDER BY pl.router_id, pl.username, pl.timestamp DESC
+        """)
+        rows = cur.fetchall()
+
+        if rows:
+            return [
+                {
+                    "usuario": r[0],
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0),
+                    "router": r[3] or "UNKNOWN",
+                    "uptime": r[4]
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo ppp_live desde BD: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # 2) Fallback: collector mikrotik directo
     try:
         data = obtener_datos()
         return data if isinstance(data, list) else []
