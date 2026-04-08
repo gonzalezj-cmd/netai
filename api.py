@@ -11,6 +11,7 @@ import threading
 import time
 import datetime
 import subprocess
+from pathlib import Path
 
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
@@ -83,8 +84,10 @@ def safe_obtener_datos():
 # APP
 # =========================
 app = FastAPI(title="NetAI NOC", version="2.0")
+BASE_DIR = Path(__file__).resolve().parent
+DASHBOARD_DIR = BASE_DIR / "dashboard"
 
-app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
+app.mount("/dashboard_static", StaticFiles(directory=str(DASHBOARD_DIR)), name="dashboard")
 
 
 @app.middleware("http")
@@ -143,12 +146,12 @@ def version():
 # =========================
 @app.get("/dashboard")
 def dashboard():
-    return FileResponse("dashboard/index.html")
+    return FileResponse(str(DASHBOARD_DIR / "index.html"))
 
 
 @app.get("/ai_page")
 def ai_page():
-    return FileResponse("dashboard/ai.html")
+    return FileResponse(str(DASHBOARD_DIR / "ai.html"))
 
 
 # =========================

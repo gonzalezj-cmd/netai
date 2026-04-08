@@ -4,11 +4,14 @@ from fastapi.responses import FileResponse
 import datetime
 import subprocess
 import time
+from pathlib import Path
 
 from database.dashboard_repo import get_latest_ppp_live
 
 app = FastAPI(title="NetAI NOC v2", version="3.0")
-app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
+BASE_DIR = Path(__file__).resolve().parent
+DASHBOARD_DIR = BASE_DIR / "dashboard"
+app.mount("/dashboard_static", StaticFiles(directory=str(DASHBOARD_DIR)), name="dashboard")
 
 
 @app.get("/health")
@@ -37,7 +40,7 @@ def version():
 
 @app.get("/dashboard")
 def dashboard():
-    return FileResponse("dashboard/index.html")
+    return FileResponse(str(DASHBOARD_DIR / "index.html"))
 
 
 @app.get("/dashboard/data")
