@@ -1,11 +1,13 @@
 import threading
 import time
+import os
 from database.postgres import get_connection
 
 _CACHE_TTL_SECONDS = 2
 _CACHE_LOCK = threading.Lock()
 _CACHE_DATA = []
 _CACHE_TS = 0.0
+_LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
 
 
 def _fetch_latest_ppp_live():
@@ -30,8 +32,9 @@ def _fetch_latest_ppp_live():
             LEFT JOIN ppp_sessions ps
                 ON ps.router_id = pl.router_id
                AND ps.username = pl.username
+            WHERE pl.timestamp >= NOW() - (%s || ' minutes')::interval
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
-        """)
+        """, (_LIVE_WINDOW_MINUTES,))
 
         rows = cur.fetchall()
         return [

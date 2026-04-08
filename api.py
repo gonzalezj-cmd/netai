@@ -11,6 +11,7 @@ import threading
 import time
 import datetime
 import subprocess
+import os
 from pathlib import Path
 
 from database.postgres import get_connection
@@ -29,6 +30,7 @@ CACHE_IA = {
     "status": "inicializando"
 }
 LAST_GOOD_DATA = []
+LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
 
 
 def safe_obtener_datos():
@@ -48,8 +50,9 @@ def safe_obtener_datos():
                 COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
             FROM ppp_live pl
             LEFT JOIN routers r ON r.id = pl.router_id
+            WHERE pl.timestamp >= NOW() - (%s || ' minutes')::interval
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
-        """)
+        """, (LIVE_WINDOW_MINUTES,))
         rows = cur.fetchall()
 
         if rows:

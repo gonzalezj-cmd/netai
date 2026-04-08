@@ -1,6 +1,7 @@
 # ==================================================
 # CONEXION MIKROTIK
 # ==================================================
+import os
 
 try:
     from routeros_api import RouterOsApiPool
@@ -8,6 +9,8 @@ except Exception:
     RouterOsApiPool = None
 
 from database.postgres import get_connection
+
+LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
 
 
 def _parse_numeric(value):
@@ -128,8 +131,9 @@ def obtener_datos_desde_bd():
             LEFT JOIN ppp_sessions ps
                 ON ps.router_id = pl.router_id
                AND ps.username = pl.username
+            WHERE pl.timestamp >= NOW() - (%s || ' minutes')::interval
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
-        """)
+        """, (LIVE_WINDOW_MINUTES,))
 
         rows = cur.fetchall()
 
