@@ -10,6 +10,12 @@ bash scripts/reset_netmonitor.sh
 
 > Si `netai-api` no existe en ese host, ignora ese paso.
 
+### Si falla `DROP DATABASE` (DB en uso)
+Usa reset en sitio:
+```bash
+sudo -u postgres psql -d netmonitor -f scripts/reset_netmonitor_inplace.sql
+```
+
 ## 2) En host de APP
 Asegura que el servicio use la DB correcta (`NETAI_DB_HOST`, `NETAI_DB_NAME`, etc.) y reinicia:
 ```bash
