@@ -8,6 +8,33 @@
 <link rel="stylesheet" href="/dashboard_static/css/index.css">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+    background: radial-gradient(circle at top left, #16223a 0%, #0b0f14 45%, #05070b 100%);
+}
+.top-banner{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:linear-gradient(90deg,#1d4ed8,#0ea5e9);
+    color:#fff;
+    border-radius:10px;
+    padding:10px 14px;
+    margin-bottom:12px;
+    font-weight:700;
+}
+.pulse{
+    width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;
+    box-shadow:0 0 0 0 rgba(34,197,94,.8);
+    animation:pulse 1.8s infinite;
+    margin-right:8px;
+}
+@keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(34,197,94,.8)}
+    70%{box-shadow:0 0 0 12px rgba(34,197,94,0)}
+    100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}
+}
+</style>
 </head>
 
 <body>
@@ -17,6 +44,10 @@
 
 <h1>🚀 NOC PRO</h1>
 <div id="buildInfo" style="font-size:12px;opacity:.7;margin-bottom:10px;"></div>
+<div class="top-banner">
+    <div>UI Refresh 2026 · Vista Operativa</div>
+    <div><span class="pulse"></span><span id="lastRefresh">actualizando...</span></div>
+</div>
 
 <!-- KPI -->
 <div class="grid" style="grid-template-columns: repeat(4,1fr);">
@@ -396,6 +427,7 @@ async function loop(){
     loadByVlan()
     loadByServer()
     loadCustomData()
+    document.getElementById("lastRefresh").innerText = `última carga ${new Date().toLocaleTimeString()}`
 }
 
 loop()
