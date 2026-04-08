@@ -2,7 +2,7 @@
 # API FINAL LIMPIO - NETAI
 # ==================================================
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -266,6 +266,35 @@ def update_router(router_id: int, router: RouterCreate):
     conn.close()
 
     return {"status": "ok"}
+
+
+@app.post("/routers/add")
+def add_router(router: RouterCreate):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO routers (name, ip, username, password, port, description)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            router.name,
+            router.ip,
+            router.username,
+            router.password,
+            router.port,
+            router.description
+        ))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo guardar el router: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================

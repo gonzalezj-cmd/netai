@@ -72,7 +72,14 @@ document.getElementById("user").value=""
 document.getElementById("pass").value=""
 document.getElementById("port").value=""
 }else{
-alert("Error al guardar")
+let msg = "Error al guardar"
+try{
+  const err = await res.json()
+  if(err && err.detail){
+    msg = err.detail
+  }
+}catch(_e){}
+alert(msg)
 }
 
 }
