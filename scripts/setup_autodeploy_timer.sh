@@ -1,37 +1,51 @@
 #!/bin/bash
 set -euo pipefail
 
-cat > ~/netai/deploy.sh <<'EOF'
+APP_DIR="${APP_DIR:-$HOME/netai}"
+BRANCH="${BRANCH:-main}"
+USER_NAME="${USER_NAME:-$USER}"
+
+cat > "$APP_DIR/deploy.sh" <<EOF
 #!/bin/bash
 set -e
-cd ~/netai
+cd $APP_DIR
 git fetch origin
-git reset --hard origin/main
-source venv/bin/activate
-sudo systemctl restart netai-api netai-collector
-echo "$(date) deploy ok $(git rev-parse --short HEAD)" >> ~/netai/deploy.log
+LOCAL=\$(git rev-parse @)
+REMOTE=\$(git rev-parse origin/$BRANCH)
+if [ "\$LOCAL" != "\$REMOTE" ]; then
+  git reset --hard origin/$BRANCH
+  source venv/bin/activate
+  sudo systemctl restart netai-api netai-collector
+  echo "\$(date) deploy ok \$REMOTE" >> $APP_DIR/deploy.log
+fi
 EOF
-chmod +x ~/netai/deploy.sh
+chmod +x "$APP_DIR/deploy.sh"
 
-sudo tee /etc/systemd/system/netai-deploy.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/netai-deploy.service >/dev/null <<EOF
 [Unit]
-Description=NetAI Deploy
+Description=NetAI auto deploy
+
 [Service]
 Type=oneshot
-User=ubuntu
-ExecStart=/home/ubuntu/netai/deploy.sh
+User=$USER_NAME
+ExecStart=$APP_DIR/deploy.sh
 EOF
 
 sudo tee /etc/systemd/system/netai-deploy.timer >/dev/null <<'EOF'
 [Unit]
 Description=Run NetAI deploy every minute
+
 [Timer]
 OnBootSec=30s
 OnUnitActiveSec=60s
 Unit=netai-deploy.service
+
 [Install]
 WantedBy=timers.target
 EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now netai-deploy.timer
+
+echo "✅ Auto deploy timer activo"
+sudo systemctl --no-pager status netai-deploy.timer | head -n 20 || true

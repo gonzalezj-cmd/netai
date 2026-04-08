@@ -11,6 +11,7 @@ import threading
 import time
 import datetime
 import subprocess
+from pathlib import Path
 
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
@@ -28,6 +29,45 @@ CACHE_IA = {
 
 
 def safe_obtener_datos():
+    # 1) Fuente principal: BD ppp_live + ppp_sessions + routers
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (pl.router_id, pl.username)
+                pl.username,
+                COALESCE(pl.rx_bps, 0) AS rx_bps,
+                COALESCE(pl.tx_bps, 0) AS tx_bps,
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
+            FROM ppp_live pl
+            LEFT JOIN routers r ON r.id = pl.router_id
+            ORDER BY pl.router_id, pl.username, pl.timestamp DESC
+        """)
+        rows = cur.fetchall()
+
+        if rows:
+            return [
+                {
+                    "usuario": r[0],
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0),
+                    "router": r[3] or "UNKNOWN",
+                    "uptime": "0s"
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo ppp_live desde BD: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # 2) Fallback: collector mikrotik directo
     try:
         data = obtener_datos()
         return data if isinstance(data, list) else []
@@ -40,8 +80,10 @@ def safe_obtener_datos():
 # APP
 # =========================
 app = FastAPI(title="NetAI NOC", version="2.0")
+BASE_DIR = Path(__file__).resolve().parent
+DASHBOARD_DIR = BASE_DIR / "dashboard"
 
-app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
+app.mount("/dashboard_static", StaticFiles(directory=str(DASHBOARD_DIR)), name="dashboard")
 
 
 @app.middleware("http")
@@ -100,12 +142,12 @@ def version():
 # =========================
 @app.get("/dashboard")
 def dashboard():
-    return FileResponse("dashboard/index.html")
+    return FileResponse(str(DASHBOARD_DIR / "index.html"))
 
 
 @app.get("/ai_page")
 def ai_page():
-    return FileResponse("dashboard/ai.html")
+    return FileResponse(str(DASHBOARD_DIR / "ai.html"))
 
 
 # =========================
