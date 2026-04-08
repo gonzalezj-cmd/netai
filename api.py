@@ -16,6 +16,8 @@ from pathlib import Path
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
 from collectors.mikrotik import obtener_datos
+from collectors.core_collector import collect_all
+from collectors.mikrotik import connect_to_router, obtener_routers_configurados
 
 
 # =========================
@@ -295,6 +297,38 @@ def add_router(router: RouterCreate):
             cur.close()
         if conn:
             conn.close()
+
+
+@app.post("/collect/now")
+def collect_now():
+    """
+    Fuerza una recolección inmediata desde todos los routers configurados.
+    Útil para una instalación nueva o después de resetear la BD.
+    """
+    routers = obtener_routers_configurados()
+    if not routers:
+        raise HTTPException(status_code=400, detail="No hay routers configurados para colectar.")
+
+    ok = 0
+    errores = []
+
+    for r in routers:
+        try:
+            api = connect_to_router(r)
+            collect_all(r, api)
+            ok += 1
+        except Exception as e:
+            errores.append({
+                "router": r.get("name") or r.get("ip"),
+                "error": str(e)
+            })
+
+    return {
+        "status": "ok" if ok else "error",
+        "routers_ok": ok,
+        "routers_total": len(routers),
+        "errores": errores
+    }
 
 
 # =========================
