@@ -220,10 +220,10 @@ function formatRate(bps){
     const v = Number(bps) || 0
     if(v <= 0) return "0 bps"
     if(v < 1_000) return `${Math.round(v)} bps`
-    if(v < 1_000_000) return `${(v/1_000).toFixed(1)} kbps`
-    if(v < 1_000_000_000) return `${(v/1_000_000).toFixed(1)} Mbps`
-    if(v < 1_000_000_000_000) return `${(v/1_000_000_000).toFixed(2)} Gbps`
-    return `${(v/1_000_000_000_000).toFixed(2)} Tbps`
+    if(v < 1_000_000) return `${Number((v/1_000).toFixed(1))} kbps`
+    if(v < 1_000_000_000) return `${Number((v/1_000_000).toFixed(1))} Mbps`
+    if(v < 1_000_000_000_000) return `${Number((v/1_000_000_000).toFixed(2))} Gbps`
+    return `${Number((v/1_000_000_000_000).toFixed(2))} Tbps`
 }
 
 function formatTrafficBytes(totalBytes){
@@ -282,7 +282,7 @@ async function load(){
             html += `
             <div class="row ${cls}">
                 <div>${u.user}</div>
-                <div>${formatRate(u.rx)}</div>
+                <div title="${Number(u.rx || 0).toLocaleString()} bps">${formatRate(u.rx)}</div>
                 <div>${u.pppoe}</div>
                 <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
             </div>`
@@ -312,7 +312,7 @@ async function load(){
             html += `
             <div class="row">
                 <div>${u.user}</div>
-                <div>${formatRate(u.tx)}</div>
+                <div title="${Number(u.tx || 0).toLocaleString()} bps">${formatRate(u.tx)}</div>
                 <div>${u.pppoe}</div>
                 <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
             </div>`
@@ -440,7 +440,9 @@ async function loadMonthlyData(dateFrom="", dateTo="", force=false){
     const months = cache.monthly.months || []
     if(months.length){
         const last = months[months.length - 1]
-        document.getElementById("monthlyTotal").innerText = formatTrafficBytes(last.cumulative_total || 0)
+        const monthlyTotalEl = document.getElementById("monthlyTotal")
+        monthlyTotalEl.innerText = formatTrafficBytes(last.cumulative_total || 0)
+        monthlyTotalEl.title = `${Number(last.cumulative_total || 0).toLocaleString()} bytes`
         document.getElementById("monthlyResume").innerHTML =
           `RX acumulado: <b>${formatTrafficBytes(last.cumulative_rx || 0)}</b><br>TX acumulado: <b>${formatTrafficBytes(last.cumulative_tx || 0)}</b>`
     }else{
