@@ -52,9 +52,10 @@ body{
 <!-- KPI -->
 <div class="grid" style="grid-template-columns: repeat(4,1fr);">
 
-<div class="card">
+<div class="card" id="monthlyCard" style="cursor:pointer;">
 <h3>>50 Mbps</h3>
 <div id="u50" class="stat good">0</div>
+<div id="monthlyResume" style="font-size:12px;opacity:.85;margin-top:8px;"></div>
 </div>
 
 <div class="card" id="card300" style="cursor:pointer;">
@@ -84,7 +85,7 @@ body{
 
 <div class="row header">
 <div>Usuario</div>
-<div>Mbps</div>
+<div>RX bps</div>
 <div>PPPoE</div>
 <div>VLAN</div>
 </div>
@@ -98,7 +99,7 @@ body{
 
 <div class="row header">
 <div>Usuario</div>
-<div>Mbps</div>
+<div>TX bps</div>
 <div>PPPoE</div>
 <div>VLAN</div>
 </div>
@@ -156,6 +157,29 @@ body{
   </div>
 </div>
 
+<!-- MODAL MENSUAL -->
+<div id="monthlyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;">
+  <div style="width:min(1040px,95vw);max-height:90vh;overflow:auto;margin:4vh auto;background:#081327;border:1px solid #0ea5e9;border-radius:12px;padding:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Acumulado mensual RX / TX</h3>
+      <button onclick="closeMonthlyModal()" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Cerrar</button>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+      <label>Desde <input type="date" id="monthFrom"></label>
+      <label>Hasta <input type="date" id="monthTo"></label>
+      <label>Métrica
+        <select id="metricSelect">
+          <option value="both">RX + TX</option>
+          <option value="rx">Solo RX</option>
+          <option value="tx">Solo TX</option>
+        </select>
+      </label>
+      <button onclick="reloadMonthlyModal()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Aplicar</button>
+    </div>
+    <canvas id="monthlyChart" height="110"></canvas>
+  </div>
+</div>
+
 <script>
 
 // =============================
@@ -168,7 +192,8 @@ let cache = {
     vlan: [],
     server: [],
     chart: [],
-    thresholds: { tx_300_users: [], tx_500_users: [], tx_300_count: 0, tx_500_count: 0 }
+    thresholds: { tx_300_users: [], tx_500_users: [], tx_300_count: 0, tx_500_count: 0 },
+    monthly: { months: [] }
 }
 
 const params = new URLSearchParams(window.location.search)
@@ -180,7 +205,7 @@ const routerFilter = (params.get("routers") || "").trim()
 // =============================
 function format(bps){
     if(!bps) return 0
-    return (bps/1e6).toFixed(2)
+    return Math.round(bps).toLocaleString("es-AR")
 }
 
 // =============================
@@ -373,6 +398,79 @@ function closeThresholdModal(){
     document.getElementById("thresholdModal").style.display = "none"
 }
 
+let monthlyChart
+let monthlyLastFetch = 0
+
+async function loadMonthlyData(dateFrom="", dateTo="", force=false){
+    const now = Date.now()
+    if(!force && !dateFrom && !dateTo && (now - monthlyLastFetch) < 60000){
+        return
+    }
+    let url = "/ppp/monthly-accumulated"
+    const q = []
+    if(dateFrom) q.push(`date_from=${encodeURIComponent(dateFrom)}`)
+    if(dateTo) q.push(`date_to=${encodeURIComponent(dateTo)}`)
+    if(q.length) url += "?" + q.join("&")
+
+    const res = await fetch(url)
+    cache.monthly = await res.json()
+    monthlyLastFetch = now
+
+    const months = cache.monthly.months || []
+    if(months.length){
+        const last = months[months.length - 1]
+        document.getElementById("monthlyResume").innerHTML =
+          `RX mes: <b>${format(last.total_rx)}</b><br>TX mes: <b>${format(last.total_tx)}</b>`
+    }else{
+        document.getElementById("monthlyResume").innerHTML = "Sin datos mensuales"
+    }
+}
+
+function drawMonthlyChart(metric="both"){
+    const months = cache.monthly.months || []
+    const labels = months.map(m => m.month)
+    const rx = months.map(m => m.total_rx)
+    const tx = months.map(m => m.total_tx)
+    const datasets = []
+    if(metric === "both" || metric === "rx"){
+        datasets.push({label:"RX acumulado", data: rx, borderColor:"#22c55e", backgroundColor:"rgba(34,197,94,.25)", tension:.25})
+    }
+    if(metric === "both" || metric === "tx"){
+        datasets.push({label:"TX acumulado", data: tx, borderColor:"#ef4444", backgroundColor:"rgba(239,68,68,.25)", tension:.25})
+    }
+
+    if(!monthlyChart){
+        monthlyChart = new Chart(document.getElementById("monthlyChart"), {
+            type: "line",
+            data: { labels, datasets },
+            options: { responsive: true, animation: false }
+        })
+    }else{
+        monthlyChart.data.labels = labels
+        monthlyChart.data.datasets = datasets
+        monthlyChart.update()
+    }
+}
+
+async function openMonthlyModal(){
+    const from = document.getElementById("monthFrom").value
+    const to = document.getElementById("monthTo").value
+    await loadMonthlyData(from, to, true)
+    drawMonthlyChart(document.getElementById("metricSelect").value)
+    document.getElementById("monthlyModal").style.display = "block"
+}
+
+function closeMonthlyModal(){
+    document.getElementById("monthlyModal").style.display = "none"
+}
+
+async function reloadMonthlyModal(){
+    const from = document.getElementById("monthFrom").value
+    const to = document.getElementById("monthTo").value
+    await loadMonthlyData(from, to, true)
+    drawMonthlyChart(document.getElementById("metricSelect").value)
+}
+
 // =============================
 // DATOS INDICADOS DESDE /dashboard/data
 // Ejemplo:
@@ -473,6 +571,7 @@ async function loop(){
     loadByVlan()
     loadByServer()
     loadThresholds()
+    loadMonthlyData()
     loadCustomData()
     document.getElementById("lastRefresh").innerText = `última carga ${new Date().toLocaleTimeString()}`
 }
@@ -505,6 +604,7 @@ loadVersion()
 
 document.getElementById("card300").addEventListener("click", () => openThresholdModal("300"))
 document.getElementById("card500").addEventListener("click", () => openThresholdModal("500"))
+document.getElementById("monthlyCard").addEventListener("click", () => openMonthlyModal())
 
 </script>
 

@@ -480,6 +480,57 @@ def ppp_thresholds(tx_300: int = 300_000_000, tx_500: int = 500_000_000):
     }
 
 
+@app.get("/ppp/monthly-accumulated")
+def ppp_monthly_accumulated(
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD")
+):
+    conn = None
+    cur = None
+    try:
+        now = datetime.date.today()
+        start_default = (now.replace(day=1) - datetime.timedelta(days=180)).replace(day=1)
+        end_default = (now + datetime.timedelta(days=1))
+
+        start = datetime.date.fromisoformat(date_from) if date_from else start_default
+        end = datetime.date.fromisoformat(date_to) if date_to else end_default
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                date_trunc('month', pl.timestamp) AS month_key,
+                COALESCE(SUM(pl.rx_bps), 0)::bigint AS total_rx,
+                COALESCE(SUM(pl.tx_bps), 0)::bigint AS total_tx
+            FROM ppp_live pl
+            WHERE pl.timestamp >= %s
+              AND pl.timestamp < %s
+            GROUP BY 1
+            ORDER BY 1 ASC
+        """, (start, end))
+
+        rows = cur.fetchall()
+        return {
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "months": [
+                {
+                    "month": r[0].strftime("%Y-%m"),
+                    "total_rx": int(r[1] or 0),
+                    "total_tx": int(r[2] or 0)
+                }
+                for r in rows
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error mensual acumulado: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 # =========================
 # VLAN
 # =========================
