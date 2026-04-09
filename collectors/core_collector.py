@@ -27,6 +27,15 @@ def clean_name(name):
     return name.replace("<", "").replace(">", "")
 
 
+def extract_vlan_id(text):
+    if not text:
+        return None
+    m = re.search(r'vlan[-_]?(\d+)', str(text).lower())
+    if m:
+        return m.group(1)
+    return None
+
+
 def get_router_name(api):
     try:
         identity = api.get_resource('/system/identity').get()
@@ -51,17 +60,34 @@ def collect_all(router, api):
     # ===============================
     ppp = api.get_resource('/ppp/active').get()
 
+    # Mapa service-name -> VLAN desde configuración PPPoE server.
+    pppoe_server_map = {}
+    try:
+        pppoe_servers = api.get_resource('/interface/pppoe-server/server').get()
+        for srv in pppoe_servers:
+            service_name = (srv.get("service-name") or "").strip()
+            iface_name = srv.get("interface")
+            vlan_id = extract_vlan_id(iface_name)
+            if service_name and vlan_id:
+                pppoe_server_map[service_name] = vlan_id
+    except Exception:
+        pppoe_server_map = {}
+
     cur.execute("DELETE FROM ppp_sessions WHERE router_id = %s", (router["id"],))
 
     ppp_users = set()
+    user_vlan_from_service = {}
 
     for s in ppp:
         user = s.get("name")
         address = s.get("address")
         interface = s.get("interface")
         uptime = s.get("uptime")
+        service_name = (s.get("service") or "").strip()
 
         ppp_users.add(user)
+        if user and service_name in pppoe_server_map:
+            user_vlan_from_service[user] = pppoe_server_map[service_name]
 
         cur.execute("""
         INSERT INTO ppp_sessions
@@ -112,15 +138,16 @@ def collect_all(router, api):
             user = name.replace("pppoe-", "")
 
             # ================= VLAN REAL =================
-            vlan = None
+            vlan = user_vlan_from_service.get(user)
 
             # 🔥 Buscar coincidencia con nombre VLAN
-            for vlan_name, vlan_id in vlan_map.items():
+            if not vlan:
+                for vlan_name, vlan_id in vlan_map.items():
 
-                # ejemplo: vlan-102-dslam
-                if user in vlan_name:
-                    vlan = vlan_id
-                    break
+                    # ejemplo: vlan-102-dslam
+                    if user in vlan_name:
+                        vlan = vlan_id
+                        break
 
             # 🔥 fallback: intentar por patrón
             if not vlan:
