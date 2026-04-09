@@ -423,7 +423,7 @@ def top_rx():
             "user": u.get("usuario"),
             "rx": u.get("rx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0) or 0
         }
         for u in sorted_data
     ]
