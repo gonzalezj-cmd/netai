@@ -498,15 +498,24 @@ def ppp_monthly_accumulated(
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
+            WITH monthly AS (
+                SELECT
+                    date_trunc('month', pl.timestamp) AS month_key,
+                    COALESCE(SUM(pl.rx_bps), 0)::bigint AS total_rx,
+                    COALESCE(SUM(pl.tx_bps), 0)::bigint AS total_tx
+                FROM ppp_live pl
+                WHERE pl.timestamp >= %s
+                  AND pl.timestamp < %s
+                GROUP BY 1
+            )
             SELECT
-                date_trunc('month', pl.timestamp) AS month_key,
-                COALESCE(SUM(pl.rx_bps), 0)::bigint AS total_rx,
-                COALESCE(SUM(pl.tx_bps), 0)::bigint AS total_tx
-            FROM ppp_live pl
-            WHERE pl.timestamp >= %s
-              AND pl.timestamp < %s
-            GROUP BY 1
-            ORDER BY 1 ASC
+                month_key,
+                total_rx,
+                total_tx,
+                SUM(total_rx) OVER (ORDER BY month_key ASC)::bigint AS cumulative_rx,
+                SUM(total_tx) OVER (ORDER BY month_key ASC)::bigint AS cumulative_tx
+            FROM monthly
+            ORDER BY month_key ASC
         """, (start, end))
 
         rows = cur.fetchall()
@@ -517,7 +526,10 @@ def ppp_monthly_accumulated(
                 {
                     "month": r[0].strftime("%Y-%m"),
                     "total_rx": int(r[1] or 0),
-                    "total_tx": int(r[2] or 0)
+                    "total_tx": int(r[2] or 0),
+                    "cumulative_rx": int(r[3] or 0),
+                    "cumulative_tx": int(r[4] or 0),
+                    "cumulative_total": int((r[3] or 0) + (r[4] or 0))
                 }
                 for r in rows
             ]
