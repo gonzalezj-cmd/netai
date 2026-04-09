@@ -180,10 +180,7 @@ const routerFilter = (params.get("routers") || "").trim()
 // =============================
 function format(bps){
     if(!bps) return 0
-    if(bps > 1e9) return (bps/1e9).toFixed(2)
-    if(bps > 1e6) return (bps/1e6).toFixed(2)
-    if(bps > 1e3) return (bps/1e3).toFixed(2)
-    return bps
+    return (bps/1e6).toFixed(2)
 }
 
 // =============================
