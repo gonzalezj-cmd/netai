@@ -36,6 +36,30 @@ def extract_vlan_id(text):
     return None
 
 
+def parse_rate_to_bps(value):
+    if value is None:
+        return 0
+    txt = str(value).strip().lower()
+    if not txt:
+        return 0
+    mult = 1
+    if txt.endswith("gbps"):
+        mult = 1_000_000_000
+        txt = txt.replace("gbps", "")
+    elif txt.endswith("mbps"):
+        mult = 1_000_000
+        txt = txt.replace("mbps", "")
+    elif txt.endswith("kbps"):
+        mult = 1_000
+        txt = txt.replace("kbps", "")
+    elif txt.endswith("bps"):
+        txt = txt.replace("bps", "")
+    try:
+        return int(float(txt) * mult)
+    except Exception:
+        return 0
+
+
 def get_router_name(api):
     try:
         identity = api.get_resource('/system/identity').get()
@@ -77,6 +101,7 @@ def collect_all(router, api):
 
     ppp_users = set()
     user_vlan_from_service = {}
+    user_live_rates = {}
 
     for s in ppp:
         user = s.get("name")
@@ -88,6 +113,12 @@ def collect_all(router, api):
         ppp_users.add(user)
         if user and service_name in pppoe_server_map:
             user_vlan_from_service[user] = pppoe_server_map[service_name]
+
+        if user:
+            user_live_rates[user] = (
+                parse_rate_to_bps(s.get("rx-bits-per-second") or s.get("rx_bps")),
+                parse_rate_to_bps(s.get("tx-bits-per-second") or s.get("tx_bps"))
+            )
 
         cur.execute("""
         INSERT INTO ppp_sessions
@@ -170,6 +201,12 @@ def collect_all(router, api):
             else:
                 rx_bps = 0
                 tx_bps = 0
+
+            # Preferir tasa en vivo reportada por PPP active cuando esté disponible.
+            live_rx, live_tx = user_live_rates.get(user, (0, 0))
+            if live_rx > 0 or live_tx > 0:
+                rx_bps = live_rx
+                tx_bps = live_tx
 
             CACHE_PPP[user] = {
                 "rx": rx_bytes,
