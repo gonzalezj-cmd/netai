@@ -57,13 +57,13 @@ body{
 <div id="u50" class="stat good">0</div>
 </div>
 
-<div class="card">
-<h3>>100 Mbps</h3>
+<div class="card" id="card300" style="cursor:pointer;">
+<h3>>300 Mbps (TX)</h3>
 <div id="u100" class="stat warn">0</div>
 </div>
 
-<div class="card">
-<h3>>500 Mbps</h3>
+<div class="card" id="card500" style="cursor:pointer;">
+<h3>>500 Mbps (TX)</h3>
 <div id="u500" class="stat crit">0</div>
 </div>
 
@@ -142,6 +142,20 @@ body{
 <canvas id="trafficChart"></canvas>
 </div>
 
+<!-- MODAL UMBRALES -->
+<div id="thresholdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;">
+  <div style="width:min(980px,94vw);max-height:85vh;overflow:auto;margin:5vh auto;background:#081327;border:1px solid #1d4ed8;border-radius:12px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 id="thresholdTitle" style="margin:0;">Usuarios por umbral TX</h3>
+          <button onclick="closeThresholdModal()" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Cerrar</button>
+      </div>
+      <div class="row header" style="margin-top:10px;">
+          <div>Usuario</div><div>Mbps TX</div><div>PPPoE</div><div>VLAN</div>
+      </div>
+      <div id="thresholdRows"></div>
+  </div>
+</div>
+
 <script>
 
 // =============================
@@ -153,7 +167,8 @@ let cache = {
     tx: [],
     vlan: [],
     server: [],
-    chart: []
+    chart: [],
+    thresholds: { tx_300_users: [], tx_500_users: [], tx_300_count: 0, tx_500_count: 0 }
 }
 
 const params = new URLSearchParams(window.location.search)
@@ -213,14 +228,14 @@ async function load(){
         let rxDiv = document.getElementById("top_rx")
 
         let html = ""
-        let c50=0,c100=0,c500=0
+        let c50=0
 
         cache.rx.forEach(u=>{
 
             let cls="good"
 
-            if(u.rx > 500e6){cls="crit";c500++}
-            else if(u.rx > 100e6){cls="warn";c100++}
+            if(u.rx > 500e6){cls="crit"}
+            else if(u.rx > 300e6){cls="warn"}
             else if(u.rx > 50e6){c50++}
 
             html += `
@@ -235,8 +250,6 @@ async function load(){
         rxDiv.innerHTML = html
 
         document.getElementById("u50").innerText = c50
-        document.getElementById("u100").innerText = c100
-        document.getElementById("u500").innerText = c500
     }
 
     // ================= TX =================
@@ -325,6 +338,42 @@ async function loadByServer(){
 
         div.innerHTML = html
     }
+}
+
+async function loadThresholds(){
+    try{
+        const r = await fetch("/ppp/thresholds")
+        cache.thresholds = await r.json()
+    }catch(e){
+        console.log("uso cache thresholds")
+    }
+    document.getElementById("u100").innerText = cache.thresholds.tx_300_count || 0
+    document.getElementById("u500").innerText = cache.thresholds.tx_500_count || 0
+}
+
+function openThresholdModal(type){
+    const modal = document.getElementById("thresholdModal")
+    const title = document.getElementById("thresholdTitle")
+    const rows = document.getElementById("thresholdRows")
+    const users = type === "500" ? (cache.thresholds.tx_500_users || []) : (cache.thresholds.tx_300_users || [])
+    title.innerText = type === "500" ? "Usuarios con TX > 500 Mbps" : "Usuarios con TX > 300 Mbps"
+    if(!users.length){
+        rows.innerHTML = '<div class="row"><div>Sin usuarios en este umbral</div><div>-</div><div>-</div><div>-</div></div>'
+    }else{
+        rows.innerHTML = users.map(u => `
+          <div class="row">
+            <div>${u.user || "-"}</div>
+            <div>${(u.tx/1e6).toFixed(2)}</div>
+            <div>${u.pppoe || "-"}</div>
+            <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
+          </div>
+        `).join("")
+    }
+    modal.style.display = "block"
+}
+
+function closeThresholdModal(){
+    document.getElementById("thresholdModal").style.display = "none"
 }
 
 // =============================
@@ -426,6 +475,7 @@ async function loop(){
     loadChart()
     loadByVlan()
     loadByServer()
+    loadThresholds()
     loadCustomData()
     document.getElementById("lastRefresh").innerText = `última carga ${new Date().toLocaleTimeString()}`
 }
@@ -455,6 +505,9 @@ async function loadVersion(){
 }
 
 loadVersion()
+
+document.getElementById("card300").addEventListener("click", () => openThresholdModal("300"))
+document.getElementById("card500").addEventListener("click", () => openThresholdModal("500"))
 
 </script>
 

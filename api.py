@@ -47,7 +47,8 @@ def safe_obtener_datos():
                 pl.username,
                 COALESCE(pl.rx_bps, 0) AS rx_bps,
                 COALESCE(pl.tx_bps, 0) AS tx_bps,
-                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
+                COALESCE(pl.vlan, '0') AS vlan
             FROM ppp_live pl
             LEFT JOIN routers r ON r.id = pl.router_id
             WHERE pl.timestamp >= NOW() - (%s || ' minutes')::interval
@@ -62,7 +63,8 @@ def safe_obtener_datos():
                     "rx": int(r[1] or 0),
                     "tx": int(r[2] or 0),
                     "router": r[3] or "UNKNOWN",
-                    "uptime": "0s"
+                    "uptime": "0s",
+                    "vlan": int(r[4]) if str(r[4]).isdigit() else 0
                 }
                 for r in rows
             ]
@@ -442,10 +444,40 @@ def top_tx():
             "user": u.get("usuario"),
             "tx": u.get("tx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0) or 0
         }
         for u in sorted_data
     ]
+
+
+@app.get("/ppp/thresholds")
+def ppp_thresholds(tx_300: int = 300_000_000, tx_500: int = 500_000_000):
+    data = safe_obtener_datos()
+    over_300 = []
+    over_500 = []
+
+    for u in data:
+        tx = int(u.get("tx", 0) or 0)
+        user_info = {
+            "user": u.get("usuario"),
+            "tx": tx,
+            "pppoe": u.get("router", "N/A"),
+            "vlan": u.get("vlan", 0) or 0
+        }
+        if tx >= tx_300:
+            over_300.append(user_info)
+        if tx >= tx_500:
+            over_500.append(user_info)
+
+    over_300 = sorted(over_300, key=lambda x: x["tx"], reverse=True)
+    over_500 = sorted(over_500, key=lambda x: x["tx"], reverse=True)
+
+    return {
+        "tx_300_count": len(over_300),
+        "tx_500_count": len(over_500),
+        "tx_300_users": over_300,
+        "tx_500_users": over_500
+    }
 
 
 # =========================
@@ -456,7 +488,16 @@ def by_vlan():
 
     data = safe_obtener_datos()
 
-    return [{"vlan": 0, "users": len(data)}]
+    result = {}
+    for u in data:
+        vlan = u.get("vlan", 0) or 0
+        vlan = int(vlan) if str(vlan).isdigit() else 0
+        result[vlan] = result.get(vlan, 0) + 1
+
+    return [
+        {"vlan": k, "users": v}
+        for k, v in sorted(result.items(), key=lambda x: x[0])
+    ]
 
 
 # =========================
