@@ -503,14 +503,27 @@ def ppp_monthly_accumulated(
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            WITH monthly AS (
+            WITH sampled AS (
                 SELECT
-                    date_trunc('month', pl.timestamp) AS month_key,
-                    COALESCE(SUM(pl.rx_bps), 0)::bigint AS total_rx,
-                    COALESCE(SUM(pl.tx_bps), 0)::bigint AS total_tx
+                    pl.timestamp,
+                    pl.router_id,
+                    pl.username,
+                    COALESCE(pl.rx_bps, 0)::double precision AS rx_bps,
+                    COALESCE(pl.tx_bps, 0)::double precision AS tx_bps,
+                    LEAD(pl.timestamp) OVER (
+                        PARTITION BY pl.router_id, pl.username
+                        ORDER BY pl.timestamp
+                    ) AS next_ts
                 FROM ppp_live pl
                 WHERE pl.timestamp >= %s
                   AND pl.timestamp < %s
+            ),
+            monthly AS (
+                SELECT
+                    date_trunc('month', timestamp) AS month_key,
+                    COALESCE(SUM((rx_bps * LEAST(GREATEST(EXTRACT(EPOCH FROM (COALESCE(next_ts, timestamp) - timestamp)), 0), 300)) / 8.0), 0)::bigint AS total_rx,
+                    COALESCE(SUM((tx_bps * LEAST(GREATEST(EXTRACT(EPOCH FROM (COALESCE(next_ts, timestamp) - timestamp)), 0), 300)) / 8.0), 0)::bigint AS total_tx
+                FROM sampled
                 GROUP BY 1
             )
             SELECT
