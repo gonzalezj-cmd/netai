@@ -54,7 +54,7 @@ body{
 
 <div class="card" id="monthlyCard" style="cursor:pointer;">
 <h3>📆 Acumulado mensual</h3>
-<div id="u50" class="stat good">0</div>
+<div id="monthlyTotal" class="stat good">0</div>
 <div id="monthlyResume" style="font-size:12px;opacity:.85;margin-top:8px;"></div>
 <canvas id="monthlyMiniChart" height="70" style="margin-top:8px;"></canvas>
 </div>
@@ -269,15 +269,12 @@ async function load(){
         let rxDiv = document.getElementById("top_rx")
 
         let html = ""
-        let c50=0
-
         cache.rx.forEach(u=>{
 
             let cls="good"
 
             if(u.rx > 500e6){cls="crit"}
             else if(u.rx > 300e6){cls="warn"}
-            else if(u.rx > 50e6){c50++}
 
             html += `
             <div class="row ${cls}">
@@ -290,7 +287,8 @@ async function load(){
 
         rxDiv.innerHTML = html
 
-        document.getElementById("u50").innerText = c50
+        // Nota: este KPI ya no reutiliza la tarjeta de acumulado mensual.
+        // Si se necesita un contador >50 Mbps en el futuro, usar un id dedicado.
     }
 
     // ================= TX =================
@@ -439,11 +437,11 @@ async function loadMonthlyData(dateFrom="", dateTo="", force=false){
     const months = cache.monthly.months || []
     if(months.length){
         const last = months[months.length - 1]
-        document.getElementById("u50").innerText = formatTrafficFromBpsAggregate(last.cumulative_total || 0)
+        document.getElementById("monthlyTotal").innerText = formatTrafficFromBpsAggregate(last.cumulative_total || 0)
         document.getElementById("monthlyResume").innerHTML =
           `RX acumulado: <b>${formatTrafficFromBpsAggregate(last.cumulative_rx || 0)}</b><br>TX acumulado: <b>${formatTrafficFromBpsAggregate(last.cumulative_tx || 0)}</b>`
     }else{
-        document.getElementById("u50").innerText = 0
+        document.getElementById("monthlyTotal").innerText = 0
         document.getElementById("monthlyResume").innerHTML = "Sin datos mensuales"
     }
     drawMonthlyMiniChart()

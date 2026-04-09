@@ -494,6 +494,11 @@ def ppp_monthly_accumulated(
 
         start = datetime.date.fromisoformat(date_from) if date_from else start_default
         end = datetime.date.fromisoformat(date_to) if date_to else end_default
+        # date_to se interpreta como inclusivo para que el filtro de UI no "desaparezca".
+        if date_to:
+            end = end + datetime.timedelta(days=1)
+        if end <= start:
+            raise HTTPException(status_code=400, detail="Rango de fechas inválido")
 
         conn = get_connection()
         cur = conn.cursor()

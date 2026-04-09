@@ -180,14 +180,10 @@ def obtener_ppp_activos():
                 rx = _parse_numeric(
                     u.get("rx-bits-per-second")
                     or u.get("rx_bps")
-                    or u.get("rx-byte")
-                    or u.get("bytes-in")
                 )
                 tx = _parse_numeric(
                     u.get("tx-bits-per-second")
                     or u.get("tx_bps")
-                    or u.get("tx-byte")
-                    or u.get("bytes-out")
                 )
 
                 # Fallback si viene como par en "rate"
