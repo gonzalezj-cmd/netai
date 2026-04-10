@@ -487,6 +487,78 @@ def history():
     return [{"time": now, "rx": total_rx, "tx": total_tx}]
 
 
+@app.get("/ppp/history-meta")
+def history_meta():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT MIN(timestamp), MAX(timestamp), COUNT(*)
+            FROM ppp_live
+        """)
+        row = cur.fetchone()
+
+        started_at = row[0]
+        latest_at = row[1]
+        samples = int(row[2] or 0)
+
+        return {
+            "since": started_at.isoformat() if started_at else None,
+            "latest": latest_at.isoformat() if latest_at else None,
+            "samples": samples
+        }
+    except Exception as e:
+        print(f"⚠️ Error leyendo metadata de histórico: {e}")
+        return {
+            "since": None,
+            "latest": None,
+            "samples": 0
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/admin/reset-metrics")
+def admin_reset_metrics():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # No toca tabla routers (MikroTiks configurados se conservan)
+        cur.execute("DELETE FROM ppp_live")
+        cur.execute("DELETE FROM ppp_sessions")
+        cur.execute("DELETE FROM interface_traffic")
+
+        conn.commit()
+
+        return {
+            "status": "ok",
+            "message": "Métricas reiniciadas a 0. Routers conservados."
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"⚠️ Error reiniciando métricas: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 # =========================
 # PPP LIST (REAL)
 # =========================
