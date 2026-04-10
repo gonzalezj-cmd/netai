@@ -2,7 +2,7 @@
 # API FINAL LIMPIO - NETAI
 # ==================================================
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -10,10 +10,15 @@ from pydantic import BaseModel
 import threading
 import time
 import datetime
+import subprocess
+import os
+from pathlib import Path
 
 from database.postgres import get_connection
 from ai.engine import ejecutar_ia
 from collectors.mikrotik import obtener_datos
+from collectors.core_collector import collect_all
+from collectors.mikrotik import connect_to_router, obtener_routers_configurados
 
 
 # =========================
@@ -24,14 +29,101 @@ CACHE_IA = {
     "last_update": None,
     "status": "inicializando"
 }
+LAST_GOOD_DATA = []
+LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1024000000"))
+
+
+def _sanitize_user_rates(data):
+    sanitized = []
+    for u in data:
+        rx = int(u.get("rx", 0) or 0)
+        tx = int(u.get("tx", 0) or 0)
+        u["rx"] = max(0, rx)
+        u["tx"] = max(0, tx)
+        sanitized.append(u)
+    return sanitized
+
+
+def safe_obtener_datos():
+    global LAST_GOOD_DATA
+    # 1) Fuente principal: BD ppp_live + ppp_sessions + routers
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (pl.router_id, pl.username)
+                pl.username,
+                COALESCE(pl.rx_bps, 0) AS rx_bps,
+                COALESCE(pl.tx_bps, 0) AS tx_bps,
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
+                COALESCE(pl.vlan, '0') AS vlan
+            FROM ppp_live pl
+            LEFT JOIN routers r ON r.id = pl.router_id
+            WHERE pl.timestamp >= NOW() - (%s || ' minutes')::interval
+            ORDER BY pl.router_id, pl.username, pl.timestamp DESC
+        """, (LIVE_WINDOW_MINUTES,))
+        rows = cur.fetchall()
+
+        if rows:
+            data = [
+                {
+                    "usuario": r[0],
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0),
+                    "router": r[3] or "UNKNOWN",
+                    "uptime": "0s",
+                    "vlan": int(r[4]) if str(r[4]).isdigit() else 0
+                }
+                for r in rows
+            ]
+            data = _sanitize_user_rates(data)
+            LAST_GOOD_DATA = data
+            return data
+    except Exception as e:
+        print(f"⚠️ Error leyendo ppp_live desde BD: {e}")
+        if LAST_GOOD_DATA:
+            return LAST_GOOD_DATA
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # 2) Fallback: collector mikrotik directo
+    try:
+        data = obtener_datos()
+        if isinstance(data, list) and data:
+            data = _sanitize_user_rates(data)
+            LAST_GOOD_DATA = data
+            return data
+        return LAST_GOOD_DATA
+    except Exception as e:
+        print(f"⚠️ Error leyendo datos de collectors: {e}")
+        return LAST_GOOD_DATA
 
 
 # =========================
 # APP
 # =========================
 app = FastAPI(title="NetAI NOC", version="2.0")
+BASE_DIR = Path(__file__).resolve().parent
+DASHBOARD_DIR = BASE_DIR / "dashboard"
 
-app.mount("/dashboard_static", StaticFiles(directory="dashboard"), name="dashboard")
+app.mount("/dashboard_static", StaticFiles(directory=str(DASHBOARD_DIR)), name="dashboard")
+
+
+@app.middleware("http")
+async def disable_dashboard_cache(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/dashboard") or request.url.path.startswith("/dashboard_static"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 # =========================
@@ -58,17 +150,34 @@ def home():
     }
 
 
+@app.get("/version")
+def version():
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True
+        ).strip()
+    except Exception:
+        commit = "unknown"
+
+    return {
+        "app": "NetAI NOC",
+        "commit": commit,
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+
 # =========================
 # DASHBOARD
 # =========================
 @app.get("/dashboard")
 def dashboard():
-    return FileResponse("dashboard/index.html")
+    return FileResponse(str(DASHBOARD_DIR / "index.html"))
 
 
 @app.get("/ai_page")
 def ai_page():
-    return FileResponse("dashboard/ai.html")
+    return FileResponse(str(DASHBOARD_DIR / "ai.html"))
 
 
 # =========================
@@ -93,7 +202,7 @@ def loop_ia():
 
             CACHE_IA["status"] = "procesando"
 
-            data = obtener_datos()
+            data = safe_obtener_datos()
 
             if not data:
                 CACHE_IA["status"] = "sin_datos"
@@ -180,13 +289,89 @@ def update_router(router_id: int, router: RouterCreate):
     return {"status": "ok"}
 
 
+@app.post("/routers/add")
+def add_router(router: RouterCreate):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO routers (name, ip, username, password, port, description)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            router.name,
+            router.ip,
+            router.username,
+            router.password,
+            router.port,
+            router.description
+        ))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo guardar el router: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/routers")
+def add_router_alias(router: RouterCreate):
+    """
+    Alias para compatibilidad con frontends que envían POST /routers.
+    """
+    return add_router(router)
+
+
+@app.post("/collect/now")
+def collect_now():
+    """
+    Fuerza una recolección inmediata desde todos los routers configurados.
+    Útil para una instalación nueva o después de resetear la BD.
+    """
+    routers = obtener_routers_configurados()
+    if not routers:
+        raise HTTPException(status_code=400, detail="No hay routers configurados para colectar.")
+
+    ok = 0
+    errores = []
+
+    for r in routers:
+        try:
+            api = connect_to_router(r)
+            collect_all(r, api)
+            ok += 1
+        except Exception as e:
+            errores.append({
+                "router": r.get("name") or r.get("ip"),
+                "error": str(e)
+            })
+
+    return {
+        "status": "ok" if ok else "error",
+        "routers_ok": ok,
+        "routers_total": len(routers),
+        "errores": errores
+    }
+
+
 # =========================
 # DASHBOARD DATA
 # =========================
 @app.get("/dashboard/data")
-def dashboard_data():
+def dashboard_data(
+    include: str | None = Query(default=None, description="Campos separados por coma"),
+    routers: str | None = Query(default=None, description="Routers separados por coma")
+):
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
+
+    if routers:
+        allowed = {r.strip() for r in routers.split(",") if r.strip()}
+        data = [u for u in data if u.get("router", "N/A") in allowed]
 
     total = len(data)
 
@@ -196,10 +381,20 @@ def dashboard_data():
         r = u.get("router", "N/A")
         por_router[r] = por_router.get(r, 0) + 1
 
-    return {
+    result = {
         "ppp_activos": total,
-        "usuarios_por_router": por_router
+        "usuarios_por_router": por_router,
+        "total_rx_bps": sum(u.get("rx", 0) for u in data),
+        "total_tx_bps": sum(u.get("tx", 0) for u in data),
+        "top_rx_user": max(data, key=lambda x: x.get("rx", 0), default={}).get("usuario"),
+        "top_tx_user": max(data, key=lambda x: x.get("tx", 0), default={}).get("usuario")
     }
+
+    if not include:
+        return result
+
+    requested = [k.strip() for k in include.split(",") if k.strip()]
+    return {k: result.get(k) for k in requested if k in result}
 
 
 # =========================
@@ -208,7 +403,7 @@ def dashboard_data():
 @app.get("/ppp/summary")
 def ppp_summary():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total = len(data)
 
@@ -233,7 +428,7 @@ def ppp_summary():
 @app.get("/ppp/top-rx")
 def top_rx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("rx", 0), reverse=True)[:20]
 
@@ -242,7 +437,7 @@ def top_rx():
             "user": u.get("usuario"),
             "rx": u.get("rx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0) or 0
         }
         for u in sorted_data
     ]
@@ -254,7 +449,7 @@ def top_rx():
 @app.get("/ppp/top-tx")
 def top_tx():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     sorted_data = sorted(data, key=lambda x: x.get("tx", 0), reverse=True)[:20]
 
@@ -263,10 +458,157 @@ def top_tx():
             "user": u.get("usuario"),
             "tx": u.get("tx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0) or 0
         }
         for u in sorted_data
     ]
+
+
+@app.get("/ppp/thresholds")
+def ppp_thresholds(tx_300: int = 300_000_000, tx_500: int = 500_000_000):
+    data = safe_obtener_datos()
+    over_300 = []
+    over_500 = []
+
+    for u in data:
+        tx = int(u.get("tx", 0) or 0)
+        user_info = {
+            "user": u.get("usuario"),
+            "tx": tx,
+            "pppoe": u.get("router", "N/A"),
+            "vlan": u.get("vlan", 0) or 0
+        }
+        if tx >= tx_300:
+            over_300.append(user_info)
+        if tx >= tx_500:
+            over_500.append(user_info)
+
+    over_300 = sorted(over_300, key=lambda x: x["tx"], reverse=True)
+    over_500 = sorted(over_500, key=lambda x: x["tx"], reverse=True)
+
+    return {
+        "tx_300_count": len(over_300),
+        "tx_500_count": len(over_500),
+        "tx_300_users": over_300,
+        "tx_500_users": over_500
+    }
+
+
+@app.get("/ppp/monthly-accumulated")
+def ppp_monthly_accumulated(
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD")
+):
+    conn = None
+    cur = None
+    try:
+        now = datetime.date.today()
+        start_default = (now.replace(day=1) - datetime.timedelta(days=180)).replace(day=1)
+        end_default = (now + datetime.timedelta(days=1))
+
+        start = datetime.date.fromisoformat(date_from) if date_from else start_default
+        end = datetime.date.fromisoformat(date_to) if date_to else end_default
+        # date_to se interpreta como inclusivo para que el filtro de UI no "desaparezca".
+        if date_to:
+            end = end + datetime.timedelta(days=1)
+        if end <= start:
+            raise HTTPException(status_code=400, detail="Rango de fechas inválido")
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH sampled AS (
+                SELECT
+                    pl.timestamp,
+                    pl.router_id,
+                    pl.username,
+                    COALESCE(pl.rx_bps, 0)::double precision AS rx_bps,
+                    COALESCE(pl.tx_bps, 0)::double precision AS tx_bps,
+                    LEAD(pl.timestamp) OVER (
+                        PARTITION BY pl.router_id, pl.username
+                        ORDER BY pl.timestamp
+                    ) AS next_ts
+                FROM ppp_live pl
+                WHERE pl.timestamp >= %s
+                  AND pl.timestamp < %s
+            ),
+            monthly AS (
+                SELECT
+                    date_trunc('month', timestamp) AS month_key,
+                    COALESCE(SUM((rx_bps * LEAST(GREATEST(EXTRACT(EPOCH FROM (COALESCE(next_ts, timestamp) - timestamp)), 0), 300)) / 8.0), 0)::bigint AS total_rx,
+                    COALESCE(SUM((tx_bps * LEAST(GREATEST(EXTRACT(EPOCH FROM (COALESCE(next_ts, timestamp) - timestamp)), 0), 300)) / 8.0), 0)::bigint AS total_tx
+                FROM sampled
+                GROUP BY 1
+            )
+            SELECT
+                month_key,
+                total_rx,
+                total_tx,
+                SUM(total_rx) OVER (ORDER BY month_key ASC)::bigint AS cumulative_rx,
+                SUM(total_tx) OVER (ORDER BY month_key ASC)::bigint AS cumulative_tx
+            FROM monthly
+            ORDER BY month_key ASC
+        """, (start, end))
+
+        rows = cur.fetchall()
+        return {
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "months": [
+                {
+                    "month": r[0].strftime("%Y-%m"),
+                    "total_rx": int(r[1] or 0),
+                    "total_tx": int(r[2] or 0),
+                    "cumulative_rx": int(r[3] or 0),
+                    "cumulative_tx": int(r[4] or 0),
+                    "cumulative_total": int((r[3] or 0) + (r[4] or 0))
+                }
+                for r in rows
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error mensual acumulado: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/ppp/monthly-accumulated/reset")
+def reset_monthly_accumulated():
+    """
+    Resetea muestras live para reiniciar el acumulado mensual desde cero.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM ppp_live")
+        live_count = int(cur.fetchone()[0] or 0)
+        cur.execute("SELECT COUNT(*) FROM ppp_sessions")
+        sess_count = int(cur.fetchone()[0] or 0)
+
+        cur.execute("DELETE FROM ppp_live")
+        cur.execute("DELETE FROM ppp_sessions")
+        conn.commit()
+
+        return {
+            "ok": True,
+            "deleted_ppp_live": live_count,
+            "deleted_ppp_sessions": sess_count,
+            "message": "Acumulado reseteado. Ejecuta /collect/now para reconstruir con datos reales."
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error reseteando acumulado: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -275,9 +617,18 @@ def top_tx():
 @app.get("/ppp/by-vlan")
 def by_vlan():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
-    return [{"vlan": 0, "users": len(data)}]
+    result = {}
+    for u in data:
+        vlan = u.get("vlan", 0) or 0
+        vlan = int(vlan) if str(vlan).isdigit() else 0
+        result[vlan] = result.get(vlan, 0) + 1
+
+    return [
+        {"vlan": k, "users": v}
+        for k, v in sorted(result.items(), key=lambda x: x[0])
+    ]
 
 
 # =========================
@@ -286,7 +637,7 @@ def by_vlan():
 @app.get("/ppp/by-server")
 def by_server():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     result = {}
 
@@ -306,7 +657,7 @@ def by_server():
 @app.get("/ppp/history")
 def history():
 
-    data = obtener_datos()
+    data = safe_obtener_datos()
 
     total_rx = sum(u.get("rx", 0) for u in data)
     total_tx = sum(u.get("tx", 0) for u in data)

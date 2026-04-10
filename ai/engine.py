@@ -8,6 +8,7 @@ from analysis.rules import evaluar_reglas
 
 from ai.scoring import calcular_score
 from ai.revendedores import detectar_revendedores
+from ai.revendedores_ai import analizar_revendedores
 
 
 def ejecutar_ia(data):
@@ -47,6 +48,7 @@ def ejecutar_ia(data):
         abuso = detectar_abuso(data_ok)
         scores = calcular_score(data_ok, anomalias, abuso)
         revendedores = detectar_revendedores(data_ok, scores)
+        revendedores_ai = analizar_revendedores(data_ok)
         acciones = evaluar_reglas(data_ok, scores)
 
         return {
@@ -55,6 +57,7 @@ def ejecutar_ia(data):
             "abuso": abuso,
             "scores": scores,
             "revendedores": revendedores,
+            "revendedores_ai": revendedores_ai,
             "acciones": acciones
         }
 

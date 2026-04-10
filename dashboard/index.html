@@ -8,6 +8,33 @@
 <link rel="stylesheet" href="/dashboard_static/css/index.css">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+    background: radial-gradient(circle at top left, #16223a 0%, #0b0f14 45%, #05070b 100%);
+}
+.top-banner{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:linear-gradient(90deg,#1d4ed8,#0ea5e9);
+    color:#fff;
+    border-radius:10px;
+    padding:10px 14px;
+    margin-bottom:12px;
+    font-weight:700;
+}
+.pulse{
+    width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;
+    box-shadow:0 0 0 0 rgba(34,197,94,.8);
+    animation:pulse 1.8s infinite;
+    margin-right:8px;
+}
+@keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(34,197,94,.8)}
+    70%{box-shadow:0 0 0 12px rgba(34,197,94,0)}
+    100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}
+}
+</style>
 </head>
 
 <body>
@@ -16,22 +43,30 @@
 <div id="nav"></div>
 
 <h1>🚀 NOC PRO</h1>
+<div id="buildInfo" style="font-size:12px;opacity:.7;margin-bottom:10px;"></div>
+<div class="top-banner">
+    <div>UI Refresh 2026 · Vista Operativa</div>
+    <div><span class="pulse"></span><span id="lastRefresh">actualizando...</span></div>
+</div>
 
 <!-- KPI -->
 <div class="grid" style="grid-template-columns: repeat(4,1fr);">
 
-<div class="card">
-<h3>>50 Mbps</h3>
-<div id="u50" class="stat good">0</div>
+<div class="card" id="monthlyCard" style="cursor:pointer;">
+<h3>📆 Acumulado mensual</h3>
+<div id="monthlyTotal" class="stat good">0</div>
+<div id="monthlyResume" style="font-size:12px;opacity:.85;margin-top:8px;"></div>
+<button onclick="resetMonthlyAccumulated(event)" style="margin-top:8px;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Reset acumulado</button>
+<canvas id="monthlyMiniChart" height="70" style="margin-top:8px;"></canvas>
 </div>
 
-<div class="card">
-<h3>>100 Mbps</h3>
+<div class="card" id="card300" style="cursor:pointer;">
+<h3>>300 Mbps (TX)</h3>
 <div id="u100" class="stat warn">0</div>
 </div>
 
-<div class="card">
-<h3>>500 Mbps</h3>
+<div class="card" id="card500" style="cursor:pointer;">
+<h3>>500 Mbps (TX)</h3>
 <div id="u500" class="stat crit">0</div>
 </div>
 
@@ -52,7 +87,7 @@
 
 <div class="row header">
 <div>Usuario</div>
-<div>Mbps</div>
+<div>RX real</div>
 <div>PPPoE</div>
 <div>VLAN</div>
 </div>
@@ -66,7 +101,7 @@
 
 <div class="row header">
 <div>Usuario</div>
-<div>Mbps</div>
+<div>TX real</div>
 <div>PPPoE</div>
 <div>VLAN</div>
 </div>
@@ -96,10 +131,55 @@
 
 <br>
 
+<!-- DATOS INDICADOS -->
+<div class="card">
+<h3>🧩 Datos indicados</h3>
+<div id="customData"></div>
+</div>
+
+<br>
+
 <!-- GRAFICO -->
 <div class="card">
 <h3>📊 Tráfico Total (RX vs TX)</h3>
 <canvas id="trafficChart"></canvas>
+</div>
+
+<!-- MODAL UMBRALES -->
+<div id="thresholdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;">
+  <div style="width:min(980px,94vw);max-height:85vh;overflow:auto;margin:5vh auto;background:#081327;border:1px solid #1d4ed8;border-radius:12px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 id="thresholdTitle" style="margin:0;">Usuarios por umbral TX</h3>
+          <button onclick="closeThresholdModal()" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Cerrar</button>
+      </div>
+      <div class="row header" style="margin-top:10px;">
+          <div>Usuario</div><div>Mbps TX</div><div>PPPoE</div><div>VLAN</div>
+      </div>
+      <div id="thresholdRows"></div>
+  </div>
+</div>
+
+<!-- MODAL MENSUAL -->
+<div id="monthlyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;">
+  <div style="width:min(1040px,95vw);max-height:90vh;overflow:auto;margin:4vh auto;background:#081327;border:1px solid #0ea5e9;border-radius:12px;padding:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Acumulado mensual RX / TX</h3>
+      <button onclick="closeMonthlyModal()" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Cerrar</button>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+      <label>Desde <input type="date" id="monthFrom"></label>
+      <label>Hasta <input type="date" id="monthTo"></label>
+      <label>Métrica
+        <select id="metricSelect">
+          <option value="both">RX + TX</option>
+          <option value="rx">Solo RX</option>
+          <option value="tx">Solo TX</option>
+        </select>
+      </label>
+      <button onclick="reloadMonthlyModal()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;">Aplicar</button>
+    </div>
+    <canvas id="monthlyChart" height="110"></canvas>
+  </div>
 </div>
 
 <script>
@@ -113,18 +193,41 @@ let cache = {
     tx: [],
     vlan: [],
     server: [],
-    chart: []
+    chart: [],
+    thresholds: { tx_300_users: [], tx_500_users: [], tx_300_count: 0, tx_500_count: 0 },
+    monthly: { months: [] }
 }
+
+const params = new URLSearchParams(window.location.search)
+const includeFields = (params.get("include") || "").trim()
+const routerFilter = (params.get("routers") || "").trim()
 
 // =============================
 // FORMATEO
 // =============================
-function format(bps){
-    if(!bps) return 0
-    if(bps > 1e9) return (bps/1e9).toFixed(2)
-    if(bps > 1e6) return (bps/1e6).toFixed(2)
-    if(bps > 1e3) return (bps/1e3).toFixed(2)
-    return bps
+function humanize(value, units, step=1000){
+    const v = Number(value) || 0
+    if(v <= 0) return `0 ${units[0]}`
+    let n = v
+    let i = 0
+    while(n >= step && i < units.length - 1){
+        n /= step
+        i++
+    }
+    return `${n.toFixed(2)} ${units[i]}`
+}
+
+function formatRate(bps){
+    const v = Number(bps) || 0
+    if(v <= 0) return "0 bps"
+    if(v < 1_000) return `${Math.round(v)} bps`
+    if(v < 1_000_000) return `${Number((v/1_000).toFixed(1))} kbps`
+    if(v < 1_000_000_000) return `${Number((v/1_000_000).toFixed(1))} Mbps`
+    return `${Number((v/1_000_000_000).toFixed(2))} Gbps`
+}
+
+function formatTrafficBytes(totalBytes){
+    return humanize(totalBytes, ["B", "KB", "MB", "GB", "TB", "PB"], 1024)
 }
 
 // =============================
@@ -169,20 +272,17 @@ async function load(){
         let rxDiv = document.getElementById("top_rx")
 
         let html = ""
-        let c50=0,c100=0,c500=0
-
         cache.rx.forEach(u=>{
 
             let cls="good"
 
-            if(u.rx > 500e6){cls="crit";c500++}
-            else if(u.rx > 100e6){cls="warn";c100++}
-            else if(u.rx > 50e6){c50++}
+            if(u.rx > 500e6){cls="crit"}
+            else if(u.rx > 300e6){cls="warn"}
 
             html += `
             <div class="row ${cls}">
                 <div>${u.user}</div>
-                <div>${format(u.rx)}</div>
+                <div title="${Number(u.rx || 0).toLocaleString()} bps">${formatRate(u.rx)}</div>
                 <div>${u.pppoe}</div>
                 <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
             </div>`
@@ -190,9 +290,8 @@ async function load(){
 
         rxDiv.innerHTML = html
 
-        document.getElementById("u50").innerText = c50
-        document.getElementById("u100").innerText = c100
-        document.getElementById("u500").innerText = c500
+        // Nota: este KPI ya no reutiliza la tarjeta de acumulado mensual.
+        // Si se necesita un contador >50 Mbps en el futuro, usar un id dedicado.
     }
 
     // ================= TX =================
@@ -213,7 +312,7 @@ async function load(){
             html += `
             <div class="row">
                 <div>${u.user}</div>
-                <div>${format(u.tx)}</div>
+                <div title="${Number(u.tx || 0).toLocaleString()} bps">${formatRate(u.tx)}</div>
                 <div>${u.pppoe}</div>
                 <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
             </div>`
@@ -283,6 +382,209 @@ async function loadByServer(){
     }
 }
 
+async function loadThresholds(){
+    try{
+        const r = await fetch("/ppp/thresholds")
+        cache.thresholds = await r.json()
+    }catch(e){
+        console.log("uso cache thresholds")
+    }
+    document.getElementById("u100").innerText = cache.thresholds.tx_300_count || 0
+    document.getElementById("u500").innerText = cache.thresholds.tx_500_count || 0
+}
+
+function openThresholdModal(type){
+    const modal = document.getElementById("thresholdModal")
+    const title = document.getElementById("thresholdTitle")
+    const rows = document.getElementById("thresholdRows")
+    const users = type === "500" ? (cache.thresholds.tx_500_users || []) : (cache.thresholds.tx_300_users || [])
+    title.innerText = type === "500" ? "Usuarios con TX > 500 Mbps" : "Usuarios con TX > 300 Mbps"
+    if(!users.length){
+        rows.innerHTML = '<div class="row"><div>Sin usuarios en este umbral</div><div>-</div><div>-</div><div>-</div></div>'
+    }else{
+        rows.innerHTML = users.map(u => `
+          <div class="row">
+            <div>${u.user || "-"}</div>
+            <div>${(u.tx/1e6).toFixed(2)}</div>
+            <div>${u.pppoe || "-"}</div>
+            <div>${(u.vlan && u.vlan != 0) ? u.vlan : "-"}</div>
+          </div>
+        `).join("")
+    }
+    modal.style.display = "block"
+}
+
+function closeThresholdModal(){
+    document.getElementById("thresholdModal").style.display = "none"
+}
+
+let monthlyChart
+let monthlyMiniChart
+let monthlyLastFetch = 0
+
+async function loadMonthlyData(dateFrom="", dateTo="", force=false){
+    const now = Date.now()
+    if(!force && !dateFrom && !dateTo && (now - monthlyLastFetch) < 60000){
+        return
+    }
+    let url = "/ppp/monthly-accumulated"
+    const q = []
+    if(dateFrom) q.push(`date_from=${encodeURIComponent(dateFrom)}`)
+    if(dateTo) q.push(`date_to=${encodeURIComponent(dateTo)}`)
+    if(q.length) url += "?" + q.join("&")
+
+    const res = await fetch(url)
+    cache.monthly = await res.json()
+    monthlyLastFetch = now
+
+    const months = cache.monthly.months || []
+    if(months.length){
+        const last = months[months.length - 1]
+        const monthlyTotalEl = document.getElementById("monthlyTotal")
+        monthlyTotalEl.innerText = formatTrafficBytes(last.cumulative_total || 0)
+        monthlyTotalEl.title = `${Number(last.cumulative_total || 0).toLocaleString()} bytes`
+        document.getElementById("monthlyResume").innerHTML =
+          `RX acumulado: <b>${formatTrafficBytes(last.cumulative_rx || 0)}</b><br>TX acumulado: <b>${formatTrafficBytes(last.cumulative_tx || 0)}</b>`
+    }else{
+        document.getElementById("monthlyTotal").innerText = 0
+        document.getElementById("monthlyResume").innerHTML = "Sin datos mensuales"
+    }
+    drawMonthlyMiniChart()
+}
+
+function drawMonthlyChart(metric="both"){
+    const months = cache.monthly.months || []
+    const labels = months.map(m => m.month)
+    const rx = months.map(m => m.cumulative_rx || 0)
+    const tx = months.map(m => m.cumulative_tx || 0)
+    const datasets = []
+    if(metric === "both" || metric === "rx"){
+        datasets.push({label:"RX acumulado", data: rx, borderColor:"#22c55e", backgroundColor:"rgba(34,197,94,.25)", tension:.25})
+    }
+    if(metric === "both" || metric === "tx"){
+        datasets.push({label:"TX acumulado", data: tx, borderColor:"#ef4444", backgroundColor:"rgba(239,68,68,.25)", tension:.25})
+    }
+
+    if(!monthlyChart){
+        monthlyChart = new Chart(document.getElementById("monthlyChart"), {
+            type: "line",
+            data: { labels, datasets },
+            options: { responsive: true, animation: false }
+        })
+    }else{
+        monthlyChart.data.labels = labels
+        monthlyChart.data.datasets = datasets
+        monthlyChart.update()
+    }
+}
+
+function drawMonthlyMiniChart(){
+    const months = cache.monthly.months || []
+    const labels = months.map(m => m.month)
+    const tx = months.map(m => m.cumulative_tx || 0)
+    const rx = months.map(m => m.cumulative_rx || 0)
+    const datasets = [
+      {label:"RX", data: rx, borderColor:"#22c55e", backgroundColor:"rgba(34,197,94,.2)", tension:.25},
+      {label:"TX", data: tx, borderColor:"#60a5fa", backgroundColor:"rgba(96,165,250,.2)", tension:.25}
+    ]
+
+    if(!monthlyMiniChart){
+      monthlyMiniChart = new Chart(document.getElementById("monthlyMiniChart"), {
+        type:"line",
+        data:{labels, datasets},
+        options:{
+          responsive:true,
+          animation:false,
+          plugins:{legend:{display:false}},
+          scales:{x:{display:false}, y:{display:false}}
+        }
+      })
+    }else{
+      monthlyMiniChart.data.labels = labels
+      monthlyMiniChart.data.datasets = datasets
+      monthlyMiniChart.update()
+    }
+}
+
+async function openMonthlyModal(){
+    const from = document.getElementById("monthFrom").value
+    const to = document.getElementById("monthTo").value
+    await loadMonthlyData(from, to, true)
+    drawMonthlyChart(document.getElementById("metricSelect").value)
+    document.getElementById("monthlyModal").style.display = "block"
+}
+
+function closeMonthlyModal(){
+    document.getElementById("monthlyModal").style.display = "none"
+}
+
+async function reloadMonthlyModal(){
+    const from = document.getElementById("monthFrom").value
+    const to = document.getElementById("monthTo").value
+    await loadMonthlyData(from, to, true)
+    drawMonthlyChart(document.getElementById("metricSelect").value)
+}
+
+async function resetMonthlyAccumulated(ev){
+    if(ev) ev.stopPropagation()
+    if(!confirm("¿Resetear acumulado mensual y comenzar desde cero?")) return
+    const res = await fetch("/ppp/monthly-accumulated/reset", { method: "POST" })
+    const data = await res.json()
+    if(!res.ok){
+      alert("No se pudo resetear acumulado")
+      return
+    }
+    await fetch("/collect/now", { method: "POST" })
+    await loadMonthlyData("", "", true)
+    alert(`Acumulado reseteado. Muestras borradas: ${data.deleted_ppp_live || 0}`)
+}
+
+// =============================
+// DATOS INDICADOS DESDE /dashboard/data
+// Ejemplo:
+// /dashboard?include=ppp_activos,total_rx_bps,top_rx_user&routers=router1,router2
+// =============================
+async function loadCustomData(){
+
+    let url = "/dashboard/data"
+    let q = []
+
+    if(includeFields){
+        q.push(`include=${encodeURIComponent(includeFields)}`)
+    }
+
+    if(routerFilter){
+        q.push(`routers=${encodeURIComponent(routerFilter)}`)
+    }
+
+    if(q.length){
+        url += "?" + q.join("&")
+    }
+
+    let div = document.getElementById("customData")
+
+    try{
+        let res = await fetch(url)
+        let data = await res.json()
+        let keys = Object.keys(data)
+
+        if(!keys.length){
+            div.innerHTML = `<div class="row"><div>Sin datos para los filtros indicados</div></div>`
+            return
+        }
+
+        div.innerHTML = keys.map(k => `
+            <div class="row">
+                <div>${k}</div>
+                <div>${typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]}</div>
+            </div>
+        `).join("")
+
+    }catch(e){
+        div.innerHTML = `<div class="row"><div>No se pudo cargar /dashboard/data</div></div>`
+    }
+}
+
 // =============================
 // CHART SIN RESETEO 🔥
 // =============================
@@ -336,6 +638,10 @@ async function loop(){
     loadChart()
     loadByVlan()
     loadByServer()
+    loadThresholds()
+    loadMonthlyData()
+    loadCustomData()
+    document.getElementById("lastRefresh").innerText = `última carga ${new Date().toLocaleTimeString()}`
 }
 
 loop()
@@ -351,6 +657,22 @@ async function loadNav(){
 }
 
 loadNav()
+
+async function loadVersion(){
+    try{
+        const r = await fetch("/version")
+        const v = await r.json()
+        document.getElementById("buildInfo").innerText = `Build: ${v.commit} | ${v.ts}`
+    }catch(e){
+        document.getElementById("buildInfo").innerText = "Build: no disponible"
+    }
+}
+
+loadVersion()
+
+document.getElementById("card300").addEventListener("click", () => openThresholdModal("300"))
+document.getElementById("card500").addEventListener("click", () => openThresholdModal("500"))
+document.getElementById("monthlyCard").addEventListener("click", () => openMonthlyModal())
 
 </script>
 
