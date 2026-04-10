@@ -178,6 +178,12 @@ def collect_all(router, api):
         name = clean_name(i.get("name"))
         rx_bytes = int(i.get("rx-byte", 0))
         tx_bytes = int(i.get("tx-byte", 0))
+        iface_rx_live = parse_rate_to_bps(
+            i.get("rx-bits-per-second") or i.get("rx_bps") or i.get("rx-rate")
+        )
+        iface_tx_live = parse_rate_to_bps(
+            i.get("tx-bits-per-second") or i.get("tx_bps") or i.get("tx-rate")
+        )
 
         # ===============================
         # PPP USERS
@@ -225,6 +231,10 @@ def collect_all(router, api):
             if live_rx > 0 or live_tx > 0:
                 rx_bps = live_rx
                 tx_bps = live_tx
+            elif iface_rx_live > 0 or iface_tx_live > 0:
+                # Si PPP active no trae rate, usar tasa instantánea de la interfaz.
+                rx_bps = iface_rx_live
+                tx_bps = iface_tx_live
 
             CACHE_PPP[user] = {
                 "rx": rx_bytes,
