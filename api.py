@@ -418,19 +418,73 @@ def by_server():
 # =========================
 @app.get("/ppp/history")
 def history():
+    conn = None
+    cur = None
 
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH latest_per_user_per_minute AS (
+                SELECT DISTINCT ON (
+                    pl.router_id,
+                    pl.username,
+                    date_trunc('minute', pl.timestamp)
+                )
+                    date_trunc('minute', pl.timestamp) AS bucket,
+                    COALESCE(pl.rx_bps, 0) AS rx_bps,
+                    COALESCE(pl.tx_bps, 0) AS tx_bps,
+                    pl.timestamp
+                FROM ppp_live pl
+                ORDER BY
+                    pl.router_id,
+                    pl.username,
+                    date_trunc('minute', pl.timestamp),
+                    pl.timestamp DESC
+            ),
+            totals AS (
+                SELECT
+                    bucket,
+                    SUM(rx_bps)::bigint AS total_rx,
+                    SUM(tx_bps)::bigint AS total_tx
+                FROM latest_per_user_per_minute
+                GROUP BY bucket
+                ORDER BY bucket DESC
+                LIMIT 60
+            )
+            SELECT
+                to_char(bucket, 'HH24:MI') AS time_label,
+                total_rx,
+                total_tx
+            FROM totals
+            ORDER BY bucket ASC
+        """)
+
+        rows = cur.fetchall()
+
+        if rows:
+            return [
+                {
+                    "time": r[0],
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0)
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo histórico desde BD: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # Fallback: punto actual en vivo (si no hay histórico en BD)
     data = safe_obtener_datos()
-
     total_rx = sum(u.get("rx", 0) for u in data)
     total_tx = sum(u.get("tx", 0) for u in data)
-
     now = datetime.datetime.now().strftime("%H:%M:%S")
-
-    return [{
-        "time": now,
-        "rx": total_rx,
-        "tx": total_tx
-    }]
+    return [{"time": now, "rx": total_rx, "tx": total_tx}]
 
 
 # =========================
