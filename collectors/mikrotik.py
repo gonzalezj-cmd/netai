@@ -190,9 +190,9 @@ def obtener_ppp_activos():
                 # Fallback si viene como par en "rate"
                 if rx == 0 and tx == 0:
                     r1, r2 = _parse_rate_pair(u.get("rate"))
-                    # asumimos formato rx/tx por defecto
-                    rx = r1
-                    tx = r2
+                    # Alineado con collect_all: formato habitual tx/rx en RouterOS.
+                    tx = r1
+                    rx = r2
 
                 resultado.append({
                     "username": u.get("name") or u.get("user") or "N/A",

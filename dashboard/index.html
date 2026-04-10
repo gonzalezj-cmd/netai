@@ -56,6 +56,7 @@ body{
 <h3>📆 Acumulado mensual</h3>
 <div id="monthlyTotal" class="stat good">0</div>
 <div id="monthlyResume" style="font-size:12px;opacity:.85;margin-top:8px;"></div>
+<button onclick="resetMonthlyAccumulated(event)" style="margin-top:8px;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Reset acumulado</button>
 <canvas id="monthlyMiniChart" height="70" style="margin-top:8px;"></canvas>
 </div>
 
@@ -521,6 +522,20 @@ async function reloadMonthlyModal(){
     const to = document.getElementById("monthTo").value
     await loadMonthlyData(from, to, true)
     drawMonthlyChart(document.getElementById("metricSelect").value)
+}
+
+async function resetMonthlyAccumulated(ev){
+    if(ev) ev.stopPropagation()
+    if(!confirm("¿Resetear acumulado mensual y comenzar desde cero?")) return
+    const res = await fetch("/ppp/monthly-accumulated/reset", { method: "POST" })
+    const data = await res.json()
+    if(!res.ok){
+      alert("No se pudo resetear acumulado")
+      return
+    }
+    await fetch("/collect/now", { method: "POST" })
+    await loadMonthlyData("", "", true)
+    alert(`Acumulado reseteado. Muestras borradas: ${data.deleted_ppp_live || 0}`)
 }
 
 // =============================
