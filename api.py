@@ -31,7 +31,7 @@ CACHE_IA = {
 }
 LAST_GOOD_DATA = []
 LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
-MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1500000000"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1000000000"))
 
 
 def safe_obtener_datos():
@@ -555,6 +555,42 @@ def ppp_monthly_accumulated(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error mensual acumulado: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/ppp/monthly-accumulated/reset")
+def reset_monthly_accumulated():
+    """
+    Resetea muestras live para reiniciar el acumulado mensual desde cero.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM ppp_live")
+        live_count = int(cur.fetchone()[0] or 0)
+        cur.execute("SELECT COUNT(*) FROM ppp_sessions")
+        sess_count = int(cur.fetchone()[0] or 0)
+
+        cur.execute("TRUNCATE TABLE ppp_live")
+        cur.execute("TRUNCATE TABLE ppp_sessions")
+        conn.commit()
+
+        return {
+            "ok": True,
+            "deleted_ppp_live": live_count,
+            "deleted_ppp_sessions": sess_count,
+            "message": "Acumulado reseteado. Ejecuta /collect/now para reconstruir con datos reales."
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error reseteando acumulado: {e}")
     finally:
         if cur:
             cur.close()
