@@ -141,8 +141,8 @@ def obtener_datos_desde_bd():
         return [
             {
                 "usuario": r[0],
-                "rx": min(_parse_numeric(r[1]), MAX_USER_BPS),
-                "tx": min(_parse_numeric(r[2]), MAX_USER_BPS),
+                "rx": 0 if _parse_numeric(r[1]) > MAX_USER_BPS else _parse_numeric(r[1]),
+                "tx": 0 if _parse_numeric(r[2]) > MAX_USER_BPS else _parse_numeric(r[2]),
                 "router": r[3] or "N/A",
                 "uptime": r[4],
                 "vlan": r[5] or 0
@@ -231,8 +231,8 @@ def obtener_datos():
         try:
             resultado.append({
                 "usuario": u.get("username"),
-                "rx": min(_parse_numeric(u.get("rx_bps", 0)), MAX_USER_BPS),
-                "tx": min(_parse_numeric(u.get("tx_bps", 0)), MAX_USER_BPS),
+                "rx": 0 if _parse_numeric(u.get("rx_bps", 0)) > MAX_USER_BPS else _parse_numeric(u.get("rx_bps", 0)),
+                "tx": 0 if _parse_numeric(u.get("tx_bps", 0)) > MAX_USER_BPS else _parse_numeric(u.get("tx_bps", 0)),
                 "uptime": u.get("uptime", 0),
                 "router": u.get("router", "N/A"),
                 # Campos opcionales para IA de revendedores

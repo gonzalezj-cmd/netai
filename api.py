@@ -39,8 +39,8 @@ def _sanitize_user_rates(data):
     for u in data:
         rx = int(u.get("rx", 0) or 0)
         tx = int(u.get("tx", 0) or 0)
-        u["rx"] = max(0, min(rx, MAX_USER_BPS))
-        u["tx"] = max(0, min(tx, MAX_USER_BPS))
+        u["rx"] = 0 if rx > MAX_USER_BPS else max(0, rx)
+        u["tx"] = 0 if tx > MAX_USER_BPS else max(0, tx)
         sanitized.append(u)
     return sanitized
 
@@ -72,8 +72,8 @@ def safe_obtener_datos():
             data = [
                 {
                     "usuario": r[0],
-                    "rx": min(int(r[1] or 0), MAX_USER_BPS),
-                    "tx": min(int(r[2] or 0), MAX_USER_BPS),
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0),
                     "router": r[3] or "UNKNOWN",
                     "uptime": "0s",
                     "vlan": int(r[4]) if str(r[4]).isdigit() else 0
@@ -590,8 +590,8 @@ def reset_monthly_accumulated():
         cur.execute("SELECT COUNT(*) FROM ppp_sessions")
         sess_count = int(cur.fetchone()[0] or 0)
 
-        cur.execute("TRUNCATE TABLE ppp_live")
-        cur.execute("TRUNCATE TABLE ppp_sessions")
+        cur.execute("DELETE FROM ppp_live")
+        cur.execute("DELETE FROM ppp_sessions")
         conn.commit()
 
         return {
