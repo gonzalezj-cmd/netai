@@ -4,9 +4,12 @@
 # ==================================================
 
 import time
+import os
 from collectors.core_collector import collect_all
 from collectors.mikrotik import connect_to_router
 from database.postgres import get_connection
+
+COLLECTOR_INTERVAL_SEC = float(os.getenv("COLLECTOR_INTERVAL_SEC", "1"))
 
 def get_routers():
 
@@ -48,4 +51,4 @@ while True:
         except Exception as e:
             print("ERROR:", e)
 
-    time.sleep(3)
+    time.sleep(max(COLLECTOR_INTERVAL_SEC, 0.5))

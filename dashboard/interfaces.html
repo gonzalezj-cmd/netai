@@ -16,6 +16,10 @@
 <div id="interfaces"></div>
 
 <script>
+function toMbps(bps){
+if(!bps) return "0.00"
+return (Number(bps)/1e6).toFixed(2)
+}
 
 async function loadNav(){
 
@@ -38,7 +42,7 @@ div.innerHTML=""
 data.forEach(i=>{
 
 div.innerHTML+=`
-<p>${i.interface} RX:${i.rx} TX:${i.tx}</p>
+<p>${i.router} | ${i.interface} | RX: ${toMbps(i.rx)} Mbps | TX: ${toMbps(i.tx)} Mbps</p>
 `
 
 })

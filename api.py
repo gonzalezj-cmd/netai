@@ -41,9 +41,14 @@ def safe_obtener_datos():
                 pl.username,
                 COALESCE(pl.rx_bps, 0) AS rx_bps,
                 COALESCE(pl.tx_bps, 0) AS tx_bps,
-                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
+                COALESCE(ps.uptime, '0s') AS uptime,
+                COALESCE(pl.vlan, 0) AS vlan
             FROM ppp_live pl
             LEFT JOIN routers r ON r.id = pl.router_id
+            LEFT JOIN ppp_sessions ps
+                ON ps.router_id = pl.router_id
+               AND ps.username = pl.username
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
         """)
         rows = cur.fetchall()
@@ -55,7 +60,8 @@ def safe_obtener_datos():
                     "rx": int(r[1] or 0),
                     "tx": int(r[2] or 0),
                     "router": r[3] or "UNKNOWN",
-                    "uptime": "0s"
+                    "uptime": r[4] or "0s",
+                    "vlan": int(r[5] or 0)
                 }
                 for r in rows
             ]
@@ -338,7 +344,7 @@ def top_rx():
             "user": u.get("usuario"),
             "rx": u.get("rx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0)
         }
         for u in sorted_data
     ]
@@ -359,7 +365,7 @@ def top_tx():
             "user": u.get("usuario"),
             "tx": u.get("tx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0)
         }
         for u in sorted_data
     ]
@@ -372,8 +378,19 @@ def top_tx():
 def by_vlan():
 
     data = safe_obtener_datos()
+    counters = {}
 
-    return [{"vlan": 0, "users": len(data)}]
+    for u in data:
+        vlan = u.get("vlan")
+        if vlan in [None, "", 0, "0"]:
+            continue
+        vlan = str(vlan)
+        counters[vlan] = counters.get(vlan, 0) + 1
+
+    return [
+        {"vlan": vlan, "users": users}
+        for vlan, users in sorted(counters.items(), key=lambda x: int(x[0]))
+    ]
 
 
 # =========================
@@ -401,16 +418,207 @@ def by_server():
 # =========================
 @app.get("/ppp/history")
 def history():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH latest_per_user_per_minute AS (
+                SELECT DISTINCT ON (
+                    pl.router_id,
+                    pl.username,
+                    date_trunc('minute', pl.timestamp)
+                )
+                    date_trunc('minute', pl.timestamp) AS bucket,
+                    COALESCE(pl.rx_bps, 0) AS rx_bps,
+                    COALESCE(pl.tx_bps, 0) AS tx_bps,
+                    pl.timestamp
+                FROM ppp_live pl
+                ORDER BY
+                    pl.router_id,
+                    pl.username,
+                    date_trunc('minute', pl.timestamp),
+                    pl.timestamp DESC
+            ),
+            totals AS (
+                SELECT
+                    bucket,
+                    SUM(rx_bps)::bigint AS total_rx,
+                    SUM(tx_bps)::bigint AS total_tx
+                FROM latest_per_user_per_minute
+                GROUP BY bucket
+                ORDER BY bucket DESC
+                LIMIT 60
+            )
+            SELECT
+                to_char(bucket, 'HH24:MI') AS time_label,
+                total_rx,
+                total_tx
+            FROM totals
+            ORDER BY bucket ASC
+        """)
+
+        rows = cur.fetchall()
+
+        if rows:
+            return [
+                {
+                    "time": r[0],
+                    "rx": int(r[1] or 0),
+                    "tx": int(r[2] or 0)
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo histórico desde BD: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # Fallback: punto actual en vivo (si no hay histórico en BD)
+    data = safe_obtener_datos()
+    total_rx = sum(u.get("rx", 0) for u in data)
+    total_tx = sum(u.get("tx", 0) for u in data)
+    now = datetime.datetime.now().strftime("%H:%M:%S")
+    return [{"time": now, "rx": total_rx, "tx": total_tx}]
+
+
+@app.get("/ppp/history-meta")
+def history_meta():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT MIN(timestamp), MAX(timestamp), COUNT(*)
+            FROM ppp_live
+        """)
+        row = cur.fetchone()
+
+        started_at = row[0]
+        latest_at = row[1]
+        samples = int(row[2] or 0)
+
+        return {
+            "since": started_at.isoformat() if started_at else None,
+            "latest": latest_at.isoformat() if latest_at else None,
+            "samples": samples
+        }
+    except Exception as e:
+        print(f"⚠️ Error leyendo metadata de histórico: {e}")
+        return {
+            "since": None,
+            "latest": None,
+            "samples": 0
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.post("/admin/reset-metrics")
+def admin_reset_metrics():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # No toca tabla routers (MikroTiks configurados se conservan)
+        cur.execute("DELETE FROM ppp_live")
+        cur.execute("DELETE FROM ppp_sessions")
+        cur.execute("DELETE FROM interface_traffic")
+
+        conn.commit()
+
+        return {
+            "status": "ok",
+            "message": "Métricas reiniciadas a 0. Routers conservados."
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"⚠️ Error reiniciando métricas: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+# =========================
+# PPP LIST (REAL)
+# =========================
+@app.get("/ppp")
+def ppp_list():
 
     data = safe_obtener_datos()
 
-    total_rx = sum(u.get("rx", 0) for u in data)
-    total_tx = sum(u.get("tx", 0) for u in data)
+    return [
+        {
+            "username": u.get("usuario", "N/A"),
+            "ip": u.get("ip", "-"),
+            "uptime": u.get("uptime", "0s"),
+            "rx": int(u.get("rx", 0)),
+            "tx": int(u.get("tx", 0)),
+            "router": u.get("router", "UNKNOWN"),
+            "vlan": u.get("vlan", 0)
+        }
+        for u in data
+    ]
 
-    now = datetime.datetime.now().strftime("%H:%M:%S")
 
-    return [{
-        "time": now,
-        "rx": total_rx,
-        "tx": total_tx
-    }]
+# =========================
+# INTERFACES LIST (REAL)
+# =========================
+@app.get("/interfaces")
+def interfaces():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (it.router_id, it.interface)
+                it.interface,
+                COALESCE(it.rx_bps, 0) AS rx_bps,
+                COALESCE(it.tx_bps, 0) AS tx_bps,
+                COALESCE(r.name, 'UNKNOWN') AS router_name
+            FROM interface_traffic it
+            LEFT JOIN routers r ON r.id = it.router_id
+            ORDER BY it.router_id, it.interface, it.id DESC
+        """)
+
+        rows = cur.fetchall()
+
+        return [
+            {
+                "interface": r[0] or "N/A",
+                "rx": int(r[1] or 0),
+                "tx": int(r[2] or 0),
+                "router": r[3] or "UNKNOWN"
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo interfaces desde BD: {e}")
+        return []
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()

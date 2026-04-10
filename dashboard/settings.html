@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Ajustes</title>
+<style>
+body{
+background:#0b0f14;
+color:white;
+font-family:Arial;
+}
+.card{
+background:#111827;
+border:1px solid #2c3444;
+border-radius:10px;
+padding:16px;
+max-width:700px;
+}
+button{
+background:#dc2626;
+color:white;
+border:0;
+border-radius:8px;
+padding:10px 14px;
+cursor:pointer;
+font-weight:bold;
+}
+small{
+opacity:.8;
+}
+</style>
+</head>
+<body>
+<div id="nav"></div>
+
+<h1>⚙️ Ajustes</h1>
+
+<div class="card">
+<h3>Reiniciar métricas (DB a 0)</h3>
+<p>Esto limpia <b>ppp_live</b>, <b>ppp_sessions</b> e <b>interface_traffic</b>.</p>
+<p><b>No elimina routers</b> ni toca la configuración de MikroTik.</p>
+<button onclick="resetMetrics()">Reiniciar valores</button>
+<p id="status"></p>
+<small>Luego de reiniciar, el collector volverá a poblar datos reales automáticamente.</small>
+</div>
+
+<script>
+async function loadNav(){
+let res = await fetch("/dashboard_static/nav.html")
+let html = await res.text()
+document.getElementById("nav").innerHTML = html
+}
+
+async function resetMetrics(){
+let ok = confirm("¿Seguro que querés reiniciar todas las métricas a 0?")
+if(!ok) return
+
+const status = document.getElementById("status")
+status.innerText = "Procesando..."
+
+try{
+let res = await fetch("/admin/reset-metrics", { method:"POST" })
+let data = await res.json()
+status.innerText = data.message || JSON.stringify(data)
+}catch(e){
+status.innerText = "Error al reiniciar métricas"
+}
+}
+
+loadNav()
+</script>
+</body>
+</html>

@@ -108,6 +108,7 @@
 <!-- GRAFICO -->
 <div class="card">
 <h3>📊 Tráfico Total (RX vs TX)</h3>
+<div id="accumulatedSince" style="font-size:12px;opacity:.8;margin-bottom:8px;"></div>
 <canvas id="trafficChart"></canvas>
 </div>
 
@@ -387,19 +388,36 @@ async function loadChart(){
     }
 }
 
+async function loadAccumulatedSince(){
+    const div = document.getElementById("accumulatedSince")
+    try{
+        const res = await fetch("/ppp/history-meta")
+        const meta = await res.json()
+        if(meta && meta.since){
+            const d = new Date(meta.since)
+            div.innerText = `Acumulado desde: ${d.toLocaleString()} | muestras: ${meta.samples || 0}`
+        }else{
+            div.innerText = "Acumulado desde: sin datos todavía"
+        }
+    }catch(e){
+        div.innerText = "Acumulado desde: no disponible"
+    }
+}
+
 // =============================
 // LOOP
 // =============================
 async function loop(){
     load()
     loadChart()
+    loadAccumulatedSince()
     loadByVlan()
     loadByServer()
     loadCustomData()
 }
 
 loop()
-setInterval(loop, 4000)
+setInterval(loop, 2000)
 
 // =============================
 // NAV
