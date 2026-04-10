@@ -11,6 +11,7 @@ except Exception:
 from database.postgres import get_connection
 
 LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1024000000"))
 
 
 def _parse_numeric(value):
@@ -140,8 +141,8 @@ def obtener_datos_desde_bd():
         return [
             {
                 "usuario": r[0],
-                "rx": _parse_numeric(r[1]),
-                "tx": _parse_numeric(r[2]),
+                "rx": min(_parse_numeric(r[1]), MAX_USER_BPS),
+                "tx": min(_parse_numeric(r[2]), MAX_USER_BPS),
                 "router": r[3] or "N/A",
                 "uptime": r[4],
                 "vlan": r[5] or 0
@@ -230,8 +231,8 @@ def obtener_datos():
         try:
             resultado.append({
                 "usuario": u.get("username"),
-                "rx": _parse_numeric(u.get("rx_bps", 0)),
-                "tx": _parse_numeric(u.get("tx_bps", 0)),
+                "rx": min(_parse_numeric(u.get("rx_bps", 0)), MAX_USER_BPS),
+                "tx": min(_parse_numeric(u.get("tx_bps", 0)), MAX_USER_BPS),
                 "uptime": u.get("uptime", 0),
                 "router": u.get("router", "N/A"),
                 # Campos opcionales para IA de revendedores

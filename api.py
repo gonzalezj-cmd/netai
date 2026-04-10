@@ -31,7 +31,18 @@ CACHE_IA = {
 }
 LAST_GOOD_DATA = []
 LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
-MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1000000000"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1024000000"))
+
+
+def _sanitize_user_rates(data):
+    sanitized = []
+    for u in data:
+        rx = int(u.get("rx", 0) or 0)
+        tx = int(u.get("tx", 0) or 0)
+        u["rx"] = max(0, min(rx, MAX_USER_BPS))
+        u["tx"] = max(0, min(tx, MAX_USER_BPS))
+        sanitized.append(u)
+    return sanitized
 
 
 def safe_obtener_datos():
@@ -69,6 +80,7 @@ def safe_obtener_datos():
                 }
                 for r in rows
             ]
+            data = _sanitize_user_rates(data)
             LAST_GOOD_DATA = data
             return data
     except Exception as e:
@@ -85,6 +97,7 @@ def safe_obtener_datos():
     try:
         data = obtener_datos()
         if isinstance(data, list) and data:
+            data = _sanitize_user_rates(data)
             LAST_GOOD_DATA = data
             return data
         return LAST_GOOD_DATA

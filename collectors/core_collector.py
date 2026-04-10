@@ -9,7 +9,7 @@ import os
 
 CACHE_INTERFACES = {}
 CACHE_PPP = {}
-MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1000000000"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1024000000"))
 
 
 def calcular_bps(prev, curr, seconds):
