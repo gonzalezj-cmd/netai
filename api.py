@@ -41,9 +41,14 @@ def safe_obtener_datos():
                 pl.username,
                 COALESCE(pl.rx_bps, 0) AS rx_bps,
                 COALESCE(pl.tx_bps, 0) AS tx_bps,
-                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name
+                COALESCE(pl.pppoe_server, r.name, 'UNKNOWN') AS router_name,
+                COALESCE(ps.uptime, '0s') AS uptime,
+                COALESCE(pl.vlan, 0) AS vlan
             FROM ppp_live pl
             LEFT JOIN routers r ON r.id = pl.router_id
+            LEFT JOIN ppp_sessions ps
+                ON ps.router_id = pl.router_id
+               AND ps.username = pl.username
             ORDER BY pl.router_id, pl.username, pl.timestamp DESC
         """)
         rows = cur.fetchall()
@@ -55,7 +60,8 @@ def safe_obtener_datos():
                     "rx": int(r[1] or 0),
                     "tx": int(r[2] or 0),
                     "router": r[3] or "UNKNOWN",
-                    "uptime": "0s"
+                    "uptime": r[4] or "0s",
+                    "vlan": int(r[5] or 0)
                 }
                 for r in rows
             ]
@@ -338,7 +344,7 @@ def top_rx():
             "user": u.get("usuario"),
             "rx": u.get("rx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0)
         }
         for u in sorted_data
     ]
@@ -359,7 +365,7 @@ def top_tx():
             "user": u.get("usuario"),
             "tx": u.get("tx", 0),
             "pppoe": u.get("router", "N/A"),
-            "vlan": 0
+            "vlan": u.get("vlan", 0)
         }
         for u in sorted_data
     ]
@@ -372,8 +378,19 @@ def top_tx():
 def by_vlan():
 
     data = safe_obtener_datos()
+    counters = {}
 
-    return [{"vlan": 0, "users": len(data)}]
+    for u in data:
+        vlan = u.get("vlan")
+        if vlan in [None, "", 0, "0"]:
+            continue
+        vlan = str(vlan)
+        counters[vlan] = counters.get(vlan, 0) + 1
+
+    return [
+        {"vlan": vlan, "users": users}
+        for vlan, users in sorted(counters.items(), key=lambda x: int(x[0]))
+    ]
 
 
 # =========================
@@ -414,3 +431,68 @@ def history():
         "rx": total_rx,
         "tx": total_tx
     }]
+
+
+# =========================
+# PPP LIST (REAL)
+# =========================
+@app.get("/ppp")
+def ppp_list():
+
+    data = safe_obtener_datos()
+
+    return [
+        {
+            "username": u.get("usuario", "N/A"),
+            "ip": u.get("ip", "-"),
+            "uptime": u.get("uptime", "0s"),
+            "rx": int(u.get("rx", 0)),
+            "tx": int(u.get("tx", 0)),
+            "router": u.get("router", "UNKNOWN"),
+            "vlan": u.get("vlan", 0)
+        }
+        for u in data
+    ]
+
+
+# =========================
+# INTERFACES LIST (REAL)
+# =========================
+@app.get("/interfaces")
+def interfaces():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (it.router_id, it.interface)
+                it.interface,
+                COALESCE(it.rx_bps, 0) AS rx_bps,
+                COALESCE(it.tx_bps, 0) AS tx_bps,
+                COALESCE(r.name, 'UNKNOWN') AS router_name
+            FROM interface_traffic it
+            LEFT JOIN routers r ON r.id = it.router_id
+            ORDER BY it.router_id, it.interface, it.id DESC
+        """)
+
+        rows = cur.fetchall()
+
+        return [
+            {
+                "interface": r[0] or "N/A",
+                "rx": int(r[1] or 0),
+                "tx": int(r[2] or 0),
+                "router": r[3] or "UNKNOWN"
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"⚠️ Error leyendo interfaces desde BD: {e}")
+        return []
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()

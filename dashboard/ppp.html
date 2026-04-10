@@ -40,6 +40,10 @@ border-bottom:1px solid #333;
 <th>Usuario</th>
 <th>IP</th>
 <th>Uptime</th>
+<th>RX Mbps</th>
+<th>TX Mbps</th>
+<th>Router</th>
+<th>VLAN</th>
 </tr>
 </thead>
 
@@ -48,6 +52,10 @@ border-bottom:1px solid #333;
 </table>
 
 <script>
+function toMbps(bps){
+if(!bps) return "0.00"
+return (Number(bps)/1e6).toFixed(2)
+}
 
 async function loadNav(){
 
@@ -74,6 +82,10 @@ let row=`
 <td>${p.username}</td>
 <td>${p.ip}</td>
 <td>${p.uptime}</td>
+<td>${toMbps(p.rx)}</td>
+<td>${toMbps(p.tx)}</td>
+<td>${p.router || "-"}</td>
+<td>${(p.vlan && p.vlan != 0) ? p.vlan : "-"}</td>
 </tr>
 `
 
