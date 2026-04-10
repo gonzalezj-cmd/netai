@@ -5,9 +5,11 @@
 from database.postgres import get_connection
 import time
 import re
+import os
 
 CACHE_INTERFACES = {}
 CACHE_PPP = {}
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1500000000"))
 
 
 def calcular_bps(prev, curr, seconds):
@@ -43,21 +45,33 @@ def parse_rate_to_bps(value):
     if not txt:
         return 0
     mult = 1
-    if txt.endswith("gbps"):
+    if txt.endswith("gbps") or txt.endswith("g"):
         mult = 1_000_000_000
-        txt = txt.replace("gbps", "")
-    elif txt.endswith("mbps"):
+        txt = txt.replace("gbps", "").replace("g", "")
+    elif txt.endswith("mbps") or txt.endswith("m"):
         mult = 1_000_000
-        txt = txt.replace("mbps", "")
-    elif txt.endswith("kbps"):
+        txt = txt.replace("mbps", "").replace("m", "")
+    elif txt.endswith("kbps") or txt.endswith("k"):
         mult = 1_000
-        txt = txt.replace("kbps", "")
+        txt = txt.replace("kbps", "").replace("k", "")
     elif txt.endswith("bps"):
         txt = txt.replace("bps", "")
     try:
         return int(float(txt) * mult)
     except Exception:
         return 0
+
+
+def parse_rate_pair(rate_value):
+    # Algunos RouterOS entregan "rate" como "tx/rx" o "rx/tx".
+    if not rate_value:
+        return 0, 0
+    parts = str(rate_value).split("/")
+    if len(parts) != 2:
+        return 0, 0
+    a = parse_rate_to_bps(parts[0])
+    b = parse_rate_to_bps(parts[1])
+    return a, b
 
 
 def get_router_name(api):
@@ -115,10 +129,14 @@ def collect_all(router, api):
             user_vlan_from_service[user] = pppoe_server_map[service_name]
 
         if user:
-            user_live_rates[user] = (
-                parse_rate_to_bps(s.get("rx-bits-per-second") or s.get("rx_bps")),
-                parse_rate_to_bps(s.get("tx-bits-per-second") or s.get("tx_bps"))
-            )
+            live_rx = parse_rate_to_bps(s.get("rx-bits-per-second") or s.get("rx_bps"))
+            live_tx = parse_rate_to_bps(s.get("tx-bits-per-second") or s.get("tx_bps"))
+            if live_rx == 0 and live_tx == 0:
+                p1, p2 = parse_rate_pair(s.get("rate"))
+                # En la mayoría de equipos viene como tx/rx.
+                if p1 > 0 or p2 > 0:
+                    live_tx, live_rx = p1, p2
+            user_live_rates[user] = (live_rx, live_tx)
 
         cur.execute("""
         INSERT INTO ppp_sessions
@@ -214,9 +232,9 @@ def collect_all(router, api):
                 "time": now
             }
 
-            if rx_bps > 10_000_000_000:
+            if rx_bps > MAX_USER_BPS:
                 rx_bps = 0
-            if tx_bps > 10_000_000_000:
+            if tx_bps > MAX_USER_BPS:
                 tx_bps = 0
 
             cur.execute("""
@@ -253,9 +271,9 @@ def collect_all(router, api):
             "time": now
         }
 
-        if rx_bps > 10_000_000_000:
+        if rx_bps > MAX_USER_BPS:
             rx_bps = 0
-        if tx_bps > 10_000_000_000:
+        if tx_bps > MAX_USER_BPS:
             tx_bps = 0
 
         cur.execute("""

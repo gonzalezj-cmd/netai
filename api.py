@@ -31,6 +31,7 @@ CACHE_IA = {
 }
 LAST_GOOD_DATA = []
 LIVE_WINDOW_MINUTES = int(os.getenv("NETAI_LIVE_WINDOW_MINUTES", "30"))
+MAX_USER_BPS = int(os.getenv("NETAI_MAX_USER_BPS", "1500000000"))
 
 
 def safe_obtener_datos():
@@ -60,8 +61,8 @@ def safe_obtener_datos():
             data = [
                 {
                     "usuario": r[0],
-                    "rx": int(r[1] or 0),
-                    "tx": int(r[2] or 0),
+                    "rx": min(int(r[1] or 0), MAX_USER_BPS),
+                    "tx": min(int(r[2] or 0), MAX_USER_BPS),
                     "router": r[3] or "UNKNOWN",
                     "uptime": "0s",
                     "vlan": int(r[4]) if str(r[4]).isdigit() else 0
